@@ -45,10 +45,12 @@ It offers the following configuration options:
 Access the web administration interface
 ---------------------------------------
 
-The admin GUI is by default accessed via the URL `https://<my domain>/admin`, when it's enabled in the setup utility or by manually setting `ADMIN=true` in `mailu.env`.
+The admin GUI is by default accessed via the URL `https://<my domain>/admin`, when it's enabled in the setup utility
+or by manually setting `ADMIN=true` in `mailu.env`.
 To login the admin GUI enter the email address and password of an user.
 
-Only global administrator users have access to all configuration settings and the Rspamd webgui. Other users will be presented with settings for only their account, and domains they are managers of.
+Only global administrator users have access to all configuration settings and the Rspamd webgui. Other users will be
+presented with settings for only their account, and domains they are managers of.
 To create a user who is a global administrator for a new installation, the Mailu.env file can be adapted.
 For more information see the section 'Admin account - automatic creation' in :ref:`the configuration reference <admin_account>`.
 
@@ -90,6 +92,8 @@ When the spam filter is disabled, all received email messages will go to the inb
 The exception to this rule, are email messages with an extremely high spam score. These email messages are always rejected by Rspamd.
 
 When the spam filter is enabled, received email messages will be moved to the logged in user's inbox folder or junk folder depending on the user defined spam filter tolerance.
+
+When `Enable marking spam mails as read` is enabled. Received messages moved to the Junk folder are marked as read. When this setting is disabled. Received messages moved to the Junk folder are not marked as read. They remain marked as unread.
 
 The user defined spam filter tolerance determines when an email is classified as ham (moved to the inbox folder) or spam (moved to the junk folder).
 The default value is 80%. The lower the spam filter tolerance, the more false positives (ham classified as spam). The higher the spam filter tolerance, the more false negatives (spam classified as ham).
@@ -155,7 +159,12 @@ You can add a fetched account by clicking on the `Add an account` button on the 
 
 * Keep emails on the server. When ticked, retains the email message in the email account after retrieving it.
 
-Click the submit button to apply settings. With the default polling interval, fetchmail will start polling the email account after 10 minutes.
+* Scan emails. When ticked, all the fetched emails will go through the local filters (rspamd, clamav, ...).
+
+* Folders. A comma separated list of folders to fetch from the server. This is optional, by default only the INBOX will be pulled.
+
+Click the submit button to apply settings. With the default polling interval, fetchmail will start polling the email account after ``FETCHMAIL_DELAY``.
+Make sure ``FETCHMAIL_ENABLED`` is set to ``true`` in ``mailu.env`` to enable fetching and showing fetchmail in the admin interface.
 
 
 Authentication tokens
@@ -171,8 +180,8 @@ After saving the application token it is not possible anymore to view the unique
 
 The comment field can be used to enter a description for the authentication token. For example the name of the application the application token is created for.
 
-In the Authorized IP field a white listed IP address can be entered. When an IP address is entered, then the application token can only be used when the IP address of the client matches with this IP address.
-When no IP address is entered, there is no restriction on IP address. It is not possible to enter multiple IP addresses.
+In the Authorized IP field a comma separated list of white listed IP addresses or networks can be entered. When the field is set, the application token can only be used when the IP address of the client matches what is in the field.
+When no IP address is entered, there is no restriction on IP address.
 
 
 Announcement
@@ -245,7 +254,7 @@ The menu item Antispam opens the Rspamd webgui. For more information how spam fi
 The spam filtering page also contains a section that describes how to create a local blacklist for blocking email messages from specific domains.
 The Rspamd webgui offers basic functions for setting metric actions, scores, viewing statistics and learning.
 
-The following settings are not persisent and are *lost* when the Antispam container is recreated or restarted:
+The following settings are not persistent and are *lost* when the Antispam container is recreated or restarted:
 
 * On the configuration tab, any changes to config files that do not reside in /var/lib or /etc/rspamd/override.d. The last location is mapped to the Mailu overrides folder.
 
@@ -273,7 +282,7 @@ On the `Mail domains` page all the domains served by Mailu are configured. Via t
 Details
 ```````
 
-This page is also accessible for domain managers. On the details page all DNS settings are displayed for configuring your DNS server. It contains information on what to configure as MX record and SPF record. On this page it is also possible to (re-)generate the keys for DKIM and DMARC. The option for generating keys for DKIM and DMARC is only available for global administrators.  After generating the keys for DKIM and DMARC, this page will also show the DNS records for configuring the DKIM/DMARC records on the DNS server.
+This page is also accessible for domain managers. On the details page all DNS settings are displayed for configuring your DNS server. It contains information on what to configure as MX record and SPF record. On this page it is also possible to (re-)generate the keys for DKIM and DMARC. The option for generating keys for DKIM and DMARC is only available for global administrators.  After generating the keys for DKIM and DMARC, this page will also show the DNS records for configuring the DKIM/DMARC records on the DNS server. You can also download a zonefile for easy upload to your nameserver.
 
 
 Edit
@@ -307,9 +316,9 @@ This page is also accessible for domain managers. On the users page new users ca
 
 * Edit. For all available options see :ref:`the Add user page <webadministration_add_user>`.
 
-* Delete. Deletes the user. The Admin GUI will ask for confirmation if the user must be really deleted.
+* Delete. Disables the user. For more information on permanently deleting users, refer to the :ref:`How to delete users page<delete_users>`.
 
-* Setting. Access the settings page of the user. See :ref:`the settings page <webadministration_settings>` for more information.
+* Settings. Access the settings page of the user. See :ref:`the settings page <webadministration_settings>` for more information.
 
 * Auto-reply. Access the auto-reply page of the user. See the :ref:`auto-reply page <webadministration_auto-reply>` for more information.
 
@@ -319,17 +328,17 @@ This page also shows an overview of the following settings of an user:
 
 * Email. The email address of the user.
 
-* Features. Shows if IMAP or POP3 access is enabled.
+* Features. Shows if IMAP or POP3 access is enabled and whether the user should be allowed to spoof emails.
 
 * Storage quota. Shows how much assigned storage has been consumed.
 
-* Sending Quota. The sending quota is the limit of messages a single user can send per day. 
+* Sending Quota. The sending quota is the limit of messages a single user can send per day.
 
-* Comment. A desription for the user. 
+* Comment. A description for the user.
 
 * Created. Date when the user was created.
 
-* Last edit. Last date when the user was modified. 
+* Last edit. Last date when the user was modified.
 
 .. _webadministration_add_user:
 
@@ -354,6 +363,8 @@ For adding a new user the following options can be configured.
 * Allow IMAP access. When ticked, allows email retrieval via the IMAP protocol.
 
 * Allow POP3 access. When ticked, allows email retrieval via the POP3 protocol.
+
+* Allow the user to spoof the sender. When ticked, allows the user to send email as anyone.
 
 
 Aliases

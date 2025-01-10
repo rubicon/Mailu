@@ -106,29 +106,32 @@ The development environment is quite similar to the production one.
 Building images
 ```````````````
 
-We supply a separate ``test/build.yml`` file for convenience.
+We supply a separate ``test/build.hcl`` file for convenience.
 After cloning the git repository to your workstation, you can build the images:
 
 .. code-block:: bash
 
   cd Mailu
-  docker-compose -f tests/build.yml build
+  docker buildx bake -f tests/build.hcl --load
 
-The ``build.yml`` file has two variables:
+The ``build.hcl`` file has three variables:
 
-#. ``$DOCKER_ORG``: First part of the image tag. Defaults to *mailu* and needs to be changed
+#. ``$DOCKER_ORG``: First part of the image tag. Defaults to *ghcr.io/mailu* and needs to be changed
    only  when pushing to your own Docker hub account.
-#. ``$VERSION``: Last part of the image tag. Defaults to *local* to differentiate from pulled
+#. ``$MAILU_VERSION``: Last part of the image tag. Defaults to *local* to differentiate from pulled
    images.
+#. ``$MAILU_PINNED_VERSION``: Last part of the image tag for x.y.z images. Defaults to *local* to differentiate from pulled
+   images.
+
 
 To re-build only specific containers at a later time.
 
 .. code-block:: bash
 
-  docker-compose -f tests/build.yml build admin webdav
+  docker buildx bake -f tests/build.hcl admin webdav
 
-If you have to push the images to Docker Hub for testing in Docker Swarm or a remote
-host, you have to define ``DOCKER_ORG`` (usually your Docker user-name) and login to
+If you have to push the images to Docker Hub for testing, you have to
+define ``DOCKER_ORG`` (usually your Docker user-name) and login to
 the hub.
 
 .. code-block:: bash
@@ -137,43 +140,43 @@ the hub.
   Username: Foo
   Password: Bar
   export DOCKER_ORG="Foo"
-  export VERSION="feat-extra-app"
-  docker-compose -f tests/build.yml build
-  docker-compose -f tests/build.yml push
+  export MAILU_VERSION="feat-extra-app"
+  export MAILU_PINNED_VERSION="feat-extra-app"
+  docker buildx bake -f tests/build.hcl --push
 
 Running containers
 ``````````````````
 
 To run the newly created images: ``cd`` to your project directory. Edit ``.env`` to set
-``VERSION`` to the same value as used during the build, which defaults to ``local``.
+``VERSION`` to the same value as used during the build (for MAILU_VERSION), which defaults to ``local``.
 After that you can run:
 
 .. code-block:: bash
 
-  docker-compose up -d
+  docker compose up -d
 
 If you wish to run commands inside a container, simply run (example):
 
 .. code-block:: bash
 
-  docker-compose exec admin ls -lah /
+  docker compose exec admin ls -lah /
 
 Or if you wish to start a shell for debugging:
 
 .. code-block:: bash
 
-  docker-compose exec admin sh
+  docker compose exec admin sh
 
 Finally, if you need to install packages inside the containers for debugging:
 
 .. code-block:: bash
 
-  docker-compose exec admin apk add --no-cache package-name
+  docker compose exec admin apk add --no-cache package-name
 
 Reviewing
 ---------
 
-Members of the **Mailu/contributors** team leave reviews to open PR's.
+Members of the **Mailu/contributors** team leave reviews on open PR's.
 In the case of a PR from a fellow team member, a single review is enough
 to initiate merging. In all other cases, two approving reviews are required.
 There is also a possibility to set the ``review/need2`` to require a second review.
@@ -203,17 +206,17 @@ Test images
 
 All PR's automatically get build by a Github Action workflow, controlled by `bors-ng`_.
 Some primitive auto testing is done.
-The resulting images get uploaded to Docker hub, under the
-tag name ``mailuci/<name>:pr-<no>``.
+The resulting images get uploaded to the Github container registry, under the
+tag name ``ghcr.io/mailu/<name>:pr-<no>``.
 
 For example, to test PR #500 against master, reviewers can use:
 
 .. code-block:: bash
 
-  export DOCKER_ORG="mailuci"
+  export DOCKER_ORG="ghcr.io/mailu"
   export MAILU_VERSION="pr-500"
-  docker-compose pull
-  docker-compose up -d
+  docker compose pull
+  docker compose up -d
 
 You can now test the PR. Play around. See if (external) mails work. Check for whatever functionality the PR is
 trying to fix. When happy, you can approve the PR. When running into failures, mark the review as
@@ -242,8 +245,8 @@ feel free to write a comment with ``bors retry``.
 
   The command "git checkout -qf <hash>" failed and exited with 128 during .
 
-Please wait a few minutes to do so, not to interfere with other builds.
-Also, don't abuse this command if anything else went wrong,
+Please wait a few minutes to do so, so as not to interfere with other builds.
+Also, don't abuse this command if anything else goes wrong,
 the author needs to try to fix it instead!
 
 Reviewing by git
@@ -277,7 +280,7 @@ Merge conflicts
 Before proceeding, check the PR page in the bottom. It should not indicate a merge conflict.
 If there are merge conflicts, you have 2 options:
 
-#. Do a review "request changes" and ask the author to resolve the merge conflict. 
+#. Do a review "request changes" and ask the author to resolve the merge conflict.
 #. Solve the merge conflict yourself on Github, using the web editor.
 
 If it can't be done in the web editor, go for option 1. Unless you want to go through the trouble of
@@ -286,7 +289,7 @@ importing the branch into your fork, do the merge and send a PR to the repositor
 Merge the PR locally
 ```````````````````````
 
-When someone sends a PR, you need merge his PR into master locally. This example will put you in a
+When someone sends a PR, you need merge their PR into master locally. This example will put you in a
 "detached head" state and do the merge in that state. Any commits done in this state will be lost
 forever when you checkout a "normal" branch. This is exactly what we want, as we do not want to mess
 with our repositories. This is just a test run.
@@ -309,35 +312,48 @@ The following must be done on every PR or after every new commit to an existing 
 If git opens a editor for a commit message just save and exit as-is. If you have a merge conflict,
 see above and do the complete procedure from ``git fetch`` onward again.
 
-Web administration
-------------------
 
-The administration Web interface requires a proper dev environment that can easily be setup using
-``virtualenv`` (make sure you are using Python 3) :
+Web administration development
+------------------------------
+
+The administration web interface requires a proper dev environment that can easily
+be setup using the ``run_dev.sh`` shell script. You need ``docker`` or ``podman``
+to run it. It will create a local webserver listening at port 8080:
 
 .. code-block:: bash
 
   cd core/admin
-  virtualenv .
-  source bin/activate
+  ./run_dev.sh
   pip install -r requirements.txt
+  [...]
+  =============================================================================
+  The "mailu-dev" container was built using this configuration:
 
-You can then export the path to the development database (use four slashes for absolute path):
+  DEV_NAME="mailu-dev"
+  DEV_DB=""
+  DEV_PROFILER="false"
+  DEV_LISTEN="127.0.0.1:8080"
+  DEV_ADMIN="admin@example.com"
+  DEV_PASSWORD="letmein"
+  =============================================================================
+  [...]
+  =============================================================================
+  The Mailu UI can be found here: http://127.0.0.1:8080/sso/login
+  You can log in with user admin@example.com and password letmein
+  =============================================================================
+
+The container will use an empty database and a default user/password unless you
+specify a database file to use by setting ``$DEV_DB``.
 
 .. code-block:: bash
 
-  export SQLALCHEMY_DATABASE_URI=sqlite:///path/to/dev.db
-
-And finally run the server with debug enabled:
-
-.. code-block:: bash
-
-  python run.py
+  DEV_DB="/path/to/dev.db" ./run_dev.sh
 
 Any change to the files will automatically restart the Web server and reload the files.
 
-When using the development environment, a debugging toolbar is displayed on the right side
-of the screen, that you can open to access query details, internal variables, etc.
+When using the development environment, a debugging toolbar is displayed on the right
+side of the screen, where you can access query details, internal variables, etc.
+
 
 Documentation
 -------------

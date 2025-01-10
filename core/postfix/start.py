@@ -1,23 +1,27 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import os
 import glob
 import shutil
 import multiprocessing
-import logging as log
 import sys
 import re
 
 from podop import run_server
-from pwd import getpwnam
 from socrate import system, conf
 
-log.basicConfig(stream=sys.stderr, level=os.environ.get("LOG_LEVEL", "WARNING"))
+system.set_env(log_filters=[
+    rb'(dis)?connect from localhost\[(\:\:1|127\.0\.0\.1)\]( quit=1 commands=1)?$',
+    rb'haproxy read\: short protocol header\: QUIT$',
+    rb'discarding EHLO keywords\: PIPELINING$'
+])
+
+os.system("flock -n /queue/pid/master.pid rm /queue/pid/master.pid")
 
 def start_podop():
-    os.setuid(getpwnam('postfix').pw_uid)
+    system.drop_privs_to('postfix')
     os.makedirs('/dev/shm/postfix',mode=0o700, exist_ok=True)
-    url = "http://" + os.environ["ADMIN_ADDRESS"] + "/internal/postfix/"
+    url = "http://" + os.environ["ADMIN_ADDRESS"] + ":8080/internal/postfix/"
     # TODO: Remove verbosity setting from Podop?
     run_server(0, "postfix", "/tmp/podop.socket", [
         ("transport", "url", url + "transport/§"),
@@ -27,14 +31,13 @@ def start_podop():
         ("mailbox", "url", url + "mailbox/§"),
         ("recipientmap", "url", url + "recipient/map/§"),
         ("sendermap", "url", url + "sender/map/§"),
-        ("senderaccess", "url", url + "sender/access/§"),
         ("senderlogin", "url", url + "sender/login/§"),
         ("senderrate", "url", url + "sender/rate/§")
     ])
 
 def start_mta_sts_daemon():
     os.chmod("/root/", 0o755) # read access to /root/.netrc required
-    os.setuid(getpwnam('postfix').pw_uid)
+    system.drop_privs_to('postfix')
     from postfix_mta_sts_resolver import daemon
     daemon.main()
 
@@ -44,12 +47,6 @@ def is_valid_postconf_line(line):
 
 # Actual startup script
 os.environ['DEFER_ON_TLS_ERROR'] = os.environ['DEFER_ON_TLS_ERROR'] if 'DEFER_ON_TLS_ERROR' in os.environ else 'True'
-os.environ["FRONT_ADDRESS"] = system.get_host_address_from_environment("FRONT", "front")
-os.environ["ADMIN_ADDRESS"] = system.get_host_address_from_environment("ADMIN", "admin")
-os.environ["ANTISPAM_MILTER_ADDRESS"] = system.get_host_address_from_environment("ANTISPAM_MILTER", "antispam:11332")
-os.environ["LMTP_ADDRESS"] = system.get_host_address_from_environment("LMTP", "imap:2525")
-os.environ["POSTFIX_LOG_SYSLOG"] = os.environ.get("POSTFIX_LOG_SYSLOG","local")
-os.environ["POSTFIX_LOG_FILE"] = os.environ.get("POSTFIX_LOG_FILE", "")
 
 # Postfix requires IPv6 addresses to be wrapped in square brackets
 if 'RELAYNETS' in os.environ:
@@ -89,11 +86,8 @@ if "RELAYUSER" in os.environ:
     conf.jinja("/conf/sasl_passwd", os.environ, path)
     os.system("postmap {}".format(path))
 
-# Configure and start local rsyslog server
-conf.jinja("/conf/rsyslog.conf", os.environ, "/etc/rsyslog.conf")
-os.system("/usr/sbin/rsyslogd -niNONE &")
 # Configure logrotate and start crond
-if os.environ["POSTFIX_LOG_FILE"] != "":
+if os.environ.get('POSTFIX_LOG_FILE'):
     conf.jinja("/conf/logrotate.conf", os.environ, "/etc/logrotate.d/postfix.conf")
     os.system("/usr/sbin/crond")
     if os.path.exists("/overrides/logrotate.conf"):
@@ -106,4 +100,5 @@ os.system("/usr/libexec/postfix/post-install meta_directory=/etc/postfix create-
 # Before starting postfix, we need to check permissions on /queue
 # in the event that postfix,postdrop id have changed
 os.system("postfix set-permissions")
-os.system("postfix start-fg")
+cmd = ['postfix', 'start-fg']
+system.run_process_and_forward_output(cmd)

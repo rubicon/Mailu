@@ -10,22 +10,21 @@ Where to ask questions?
 ```````````````````````
 
 First, please read this FAQ to check if your question is listed here.
-Simple questions best fit in our `Matrix`_ room.
-For more complex questions, you can always open a `new issue`_ on GitHub.
-We actively monitor the issues list.
+Simple questions are best asked in our `Matrix`_ room.
+For more complex questions, you can always open a `new discussion`_ on GitHub.
 
 
 My installation is broken!
 ``````````````````````````
 
-We're sorry to hear that. Please check for common mistakes and troubleshooting
+We are sorry to hear that. Please check for common mistakes and troubleshooting
 advice in the `Technical issues`_ section of this page.
 
 I think I found a bug!
 ``````````````````````
 
-If you did not manage to solve the issue using this FAQ and there is not any 
-`open issues`_ describing the same problem, you can continue to open a
+If you did not manage to solve the issue using this FAQ and there are not any
+`open issues`_ describing the same problem, you can open a
 `new issue`_ on GitHub.
 
 I want a new feature or enhancement!
@@ -33,20 +32,21 @@ I want a new feature or enhancement!
 
 Great! We are always open for suggestions. We currently maintain two tags:
 
-- `Enhancement issues`_: Typically used for optimization of features in the project.
-- `Feature request issues`_: For implementing new functionality,
+- ``type/enhancement``: Typically used for optimization of features in the project.
+- ``type/feature``: For implementing new functionality,
   plugins and applications.
 
-Please check if your idea (or something similar) is already mentioned there.
+Feature requests are discussed on the discussion page of the project (see `feature requests`_).
+Please check if your idea (or something similar) is already mentioned on the project.
 If there is one open, you can choose to vote with a thumbs up, so we can
 estimate the popular demand. Please refrain from writing comments like
 *"me too"* as it clobbers the actual discussion.
 
-If you can't find anything similar, you can open a `new issue`_.
+If you can't find anything similar, you can open a `new feature request`_.
 Please also share (where applicable):
 
 - Use case: how does this improve the project?
-- Any research done on the subject. Perhaps some links to upstream website,
+- Any research done on the subject. Perhaps some links to upstream websites,
   reference implementations etc.
 
 Why does my feature/bug take so long to solve?
@@ -64,18 +64,18 @@ We currently maintain a strict work flow:
 #. We use Github actions for some very basic building and testing;
 #. The pull request needs to be code-reviewed and tested by at least two members
    from the contributors team.
-  
+
 Please consider that this project is mostly developed in people their free time.
 We thank you for your understanding and patience.
 
 I would like to donate (for a feature)
 ``````````````````````````````````````
 
-We maintain a `Communtity Bridge`_ project through which you can donate.
+We maintain a `Community Bridge`_ project through which you can donate.
 This budget will be used to pay for development of features, mentorship and hopefully future events.
 Contributing companies or individuals can be paid from this budget to support their development efforts.
 
-We are also looking into GitHub's integrated sponorship program for individual contributors.
+We are also looking into GitHub's integrated sponsorship program for individual contributors.
 Once those become available, we will add them to the project.
 
 Please click the |sponsor| button on top of our GitHub Page for current possibilities.
@@ -89,10 +89,11 @@ Please click the |sponsor| button on top of our GitHub Page for current possibil
 .. _`Matrix`: https://matrix.to/#/#mailu:tedomum.net
 .. _`open issues`: https://github.com/Mailu/Mailu/issues
 .. _`new issue`: https://github.com/Mailu/Mailu/issues/new
-.. _`Enhancement issues`: https://github.com/Mailu/Mailu/issues?q=is%3Aissue+is%3Aopen+label%3Atype%2Fenhancement
-.. _`Feature request issues`: https://github.com/Mailu/Mailu/issues?q=is%3Aopen+is%3Aissue+label%3Atype%2Ffeature
+.. _`new discussion`: https://github.com/Mailu/Mailu/discussions/categories/user-support
+.. _`feature requests`: https://github.com/Mailu/Mailu/discussions/categories/feature-requests-ideas
+.. _`new feature request`: https://github.com/Mailu/Mailu/discussions/new?category=feature-requests-ideas
 .. _`GitHub`: https://github.com/Mailu/Mailu
-.. _`Communtity Bridge`: https://funding.communitybridge.org/projects/mailu
+.. _`Community Bridge`: https://funding.communitybridge.org/projects/mailu
 
 Deployment related
 ------------------
@@ -145,64 +146,55 @@ Your mail service will be reachable for IMAP, POP3, SMTP and Webmail at the addr
 How to make IPv6 work?
 ``````````````````````
 
-Docker currently does not expose the IPv6 ports properly, as it does not interface with ``ip6tables``.
-Lets start with quoting everything that's wrong:
+Docker IPv6 interfacing with ``ip6tables``, which is required for proper IPv6 support, is currently considered experimental.
 
-  Unfortunately, initially Docker was not created with IPv6 in mind.
-  It was added later and, while it has come a long way, is still not as usable as one would want.
-  Much discussion is still going on as to how IPv6 should be used in a containerized world;
-  See the various GitHub issues linked below:
-  
-  - Giving each container a publicly routable address means all ports (even unexposed / unpublished ports) are suddenly
-    reachable by everyone, if no additional filtering is done
-    (`docker/docker#21614 <https://github.com/docker/docker/issues/21614>`_)
-  - By default, each container gets a random IPv6, making it impossible to do properly do DNS;
-    the alternative is to assign a specific IPv6 address to each container,
-    still an administrative hassle (`docker/docker#13481 <https://github.com/docker/docker/issues/13481>`_)
-  - Published ports won't work on IPv6, unless you have the userland proxy enabled
-    (which, for now, is enabled by default in Docker)
-  - The userland proxy, however, seems to be on its way out
-    (`docker/docker#14856 <https://github.com/docker/docker/issues/14856>`_) and has various issues, like:
-  
-    - It can use a lot of RAM (`docker/docker#11185 <https://github.com/docker/docker/issues/11185>`_)
-    - Source IP addresses are rewritten, making it completely unusable for many purposes, e.g. mail servers 
-      (`docker/docker#17666 <https://github.com/docker/docker/issues/17666>`_),
-      (`docker/libnetwork#1099 <https://github.com/docker/libnetwork/issues/1099>`_).
-  
-  -- `Robbert Klarenbeek <https://github.com/robbertkl>`_ (docker-ipv6nat author)
-  
-Okay, but I still want to use IPv6! Can I just use the installers IPv6 checkbox? **NO, YOU SHOULD NOT DO THAT!** Why you ask?
-Mailu has its own trusted IPv4 network, every container inside this network can use e.g. the SMTP container without further
-authentication. If you enabled IPv6 inside the setup assistant (and fixed the ports to also be exposed on IPv6) Docker will
-still rewrite any incoming IPv6 requests to an IPv4 address, *which is located inside the trusted network*. Therefore any
-incoming connection to the SMTP container will bypass the authentication stage by the front container regardless of your
-settings and causes an Open Relay. And you really don't want this!
+Although the supposed way to enable IPv6 would be to give each container a publicly routable address, docker's IPv6 support
+uses NAT to pass outside connections to the containers.
 
-So, how to make it work? Well, by using `docker-ipv6nat`_! This nifty container will set up ``ip6tables``,
-just as Docker would do for IPv4. We know that nat-ing is not advised in IPv6,
-however exposing all containers to public network neither. The choice is ultimately yous.
+Currently we recommend to use `docker-ipv6nat` by `Robert Klarenbeek <https://github.com/robbertkl>` instead of docker's
+experimental support.
 
-Mailu `setup utility`_ generates a safe IPv6 ULA subnet by default. So when you run the following command,
-Mailu will start to function on IPv6:
+Before enabling IPv6 you **MUST** disable the userland-proxy in your ``/etc/docker/daemon.json`` to not create an Open Relay!
 
-.. code-block:: bash
+.. code-block:: json
 
-  docker run -d --restart=always -v /var/run/docker.sock:/var/run/docker.sock:ro --privileged --net=host robbertkl/ipv6nat
+  {
+      "userland-proxy": false
+  }
 
-.. _`docker-ipv6nat`: https://github.com/robbertkl/docker-ipv6nat
+You can enable `docker-ipv6nat` like this:
+
+  docker run -d --name ipv6nat --privileged --network host --restart unless-stopped -v /var/run/docker.sock:/var/run/docker.sock:ro -v /lib/modules:/lib/modules:ro robbertkl/ipv6nat
+
+If you want to try docker's experimental IPv6 support, it can be enabled like this:
+
+.. code-block:: json
+
+  {
+      "userland-proxy": false,
+      "ipv6": true,
+      "experimental": true,
+      "fixed-cidr-v6": "fd00:1234:abcd::/48",
+      "ip6tables": true
+  }
+
+and enabling the IPv6 checkbox in the `setup utility`_.
+
+This setup however is not officially supported, and might result in unforeseen issues.
+With bad misconfiguration you might even cause your instance to become an Open Relay, you have been warned!
+
 .. _`setup utility`: https://setup.mailu.io
 
 How does Mailu scale up?
 ````````````````````````
 
-Recent works allow Mailu to be deployed in Docker Swarm and Kubernetes.
-This means it can be scaled horizontally. For more information, refer to :ref:`kubernetes`
-or the `Docker swarm howto`_.
+Recent works allow Mailu to be deployed in Docker Kubernetes.
+This means it can be scaled horizontally. For more information, refer to :ref:`kubernetes`.
 
 *Issue reference:* `165`_, `520`_.
 
-How to achieve HA / failover?
-`````````````````````````````
+How to achieve HA / fail-over?
+``````````````````````````````
 
 The mailboxes and databases for Mailu are kept on the host filesystem under ``$ROOT/``.
 For making the **storage** highly available, all sorts of techniques can be used:
@@ -211,26 +203,26 @@ For making the **storage** highly available, all sorts of techniques can be used
 - btrfs in raid configuration
 - Distributed network filesystems such as GlusterFS or CEPH
 
-Note that no storage HA solution can protect against incidental deletes or file corruptions.
+Note that no storage HA solution can protect against accidental deletes or file corruptions.
 Therefore it is advised to create backups on a regular base!
 
 A backup MX can be configured as **failover**. For this you need a separate server running
 Mailu. On that server, your domains will need to be setup as "Relayed domains", pointing
 to you main server. MX records for the mail domains with a higher priority number will have
-to point to this server. Please be aware that a backup MX can act as a `spam magnet`_.
+to point to this server. Please be aware that a backup MX can act as a `spam magnet`_ (archive.org).
 
 For **service** HA, please see: `How does Mailu scale up?`_
 
 
 *Issue reference:* `177`_, `591`_.
 
-.. _`spam magnet`: https://blog.zensoftware.co.uk/2012/07/02/why-we-tend-to-recommend-not-having-a-secondary-mx-these-days/
+.. _`spam magnet`: https://web.archive.org/web/20130131032707/https://blog.zensoftware.co.uk/2012/07/02/why-we-tend-to-recommend-not-having-a-secondary-mx-these-days/
 
 Does Mailu run on Rancher?
 ``````````````````````````
 
 There is a rancher catalog for Mailu in the `Mailu/Rancher`_ repository. The user group for Rancher is small,
-so we cannot promise any support on this when you're heading into trouble. See the repository README for more details.
+so we cannot promise any support on this when you are heading into trouble. See the repository README for more details.
 
 *Issue reference:* `125`_.
 
@@ -264,10 +256,12 @@ correct syntax. The following file names will be taken as override configuration
    - For both ``postfix.cf`` and ``postfix.master``, you need to put one configuration per line, as they are fed line-by-line
      to postfix.
    - ``logrotate.conf`` as ``$ROOT/overrides/postfix/logrotate.conf`` - Replaces the logrotate.conf file used for rotating ``POSTFIX_LOG_FILE``.
-- `Dovecot`_ - ``dovecot.conf`` in dovecot sub-directory;
-- `Nginx`_ - All ``*.conf`` files in the ``nginx`` sub-directory;
+- `Dovecot`_ - ``dovecot.conf`` in dovecot sub-directory.
+- `Nginx`_ :
+   - All ``*.conf`` files in the ``nginx`` sub-directory.
+   - ``proxy.conf`` in the ``nginx/dovecot`` sub-directory.
 - `Rspamd`_ - All files in the ``rspamd`` sub-directory.
-- Roundcube - All ``*.inc`` files in the ``roundcube`` sub directory.
+- `Roundcube`_ - All ``*.inc.php`` files in the ``roundcube`` sub directory.
 
 To override the root location (``/``) in Nginx ``WEBROOT_REDIRECT`` needs to be set to ``none`` in the env file (see :ref:`web settings <web_settings>`).
 
@@ -293,10 +287,10 @@ I want to integrate Nextcloud 15 (and newer) with Mailu
         ),
       ),
   ),
-  
+
 
 If a domain name (e.g. example.com) is specified, then this makes sure that only users from this domain will be allowed to login.
-After successfull login the domain part will be striped and the rest used as username in Nextcloud. e.g. 'username@example.com' will be 'username' in Nextcloud. Disable this behaviour by changing true (the fifth parameter) to false. 
+After successful login the domain part will be stripped and the rest used as username in Nextcloud. e.g. 'username@example.com' will be 'username' in Nextcloud. Disable this behaviour by changing true (the fifth parameter) to false.
 
 *Issue reference:* `575`_.
 
@@ -347,19 +341,19 @@ How do I use webdav (radicale)?
 |
 | Subsequently to use webdav (radicale), you can configure your carddav/caldav client to use the following url:
 | `https://mail.example.com/webdav/user@example.com`
-| As username you must provide the complete email address (user@example.com).  
+| As username you must provide the complete email address (user@example.com).
 | As password you must provide the password of the email address.
 | The user must be an existing Mailu user.
 
 *issue reference:* `1591`_.
 
 
-.. _`Postfix`: http://www.postfix.org/postconf.5.html
-.. _`Dovecot`: https://doc.dovecot.org/configuration_manual/config_file/config_file_syntax/
-.. _`NGINX`:   https://nginx.org/en/docs/
-.. _`Rspamd`:  https://www.rspamd.com/doc/configuration/index.html
+.. _`Postfix`:   http://www.postfix.org/postconf.5.html
+.. _`Dovecot`:   https://doc.dovecot.org/configuration_manual/config_file/config_file_syntax/
+.. _`NGINX`:     https://nginx.org/en/docs/
+.. _`Rspamd`:    https://www.rspamd.com/doc/configuration/index.html
+.. _`Roundcube`: https://github.com/roundcube/roundcubemail/wiki/Configuration#customize-the-look
 
-.. _`Docker swarm howto`: https://github.com/Mailu/Mailu/tree/master/docs/swarm/master
 .. _`125`: https://github.com/Mailu/Mailu/issues/125
 .. _`165`: https://github.com/Mailu/Mailu/issues/165
 .. _`177`: https://github.com/Mailu/Mailu/issues/177
@@ -370,6 +364,8 @@ How do I use webdav (radicale)?
 .. _`591`: https://github.com/Mailu/Mailu/issues/591
 .. _`575`: https://github.com/Mailu/Mailu/issues/575
 .. _`1591`: https://github.com/Mailu/Mailu/issues/1591
+
+.. _mta-sts:
 
 How do I setup a MTA-STS policy?
 ````````````````````````````````
@@ -402,6 +398,46 @@ Technical issues
 In this section we are trying to cover the most common problems our users are having.
 If your issue is not listed here, please consult issues with the `troubleshooting tag`_.
 
+.. _delete_users:
+
+How to delete users?
+````````````````````
+
+From the web administration interface, when a user is deleted, the user is only disabled. When a user is not enabled, this user:
+
+* cannot send/receive email
+* cannot access Mailu (admin/webmail)
+* cannot access the email box via pop3/imap
+
+It is not possible to delete users via the Mailu web administration interface. The main reason is to prevent email address reuse. If a user was deleted, it can be recreated and used by someone else. It is not clear that the email address has been used by someone else previously. This new user might receive emails which were meant for the previous user. Disabling the user, prevents the email address to be reused by mistake.
+
+Another reason is that extra post-deletion steps are required after a user has been deleted from the Mailu database. Those additional steps are:
+
+* Delete the dovecot mailbox. If this does not happen, a new user with the same email address reuses the previous user's mailbox.
+* Delete the user from the roundcube database (not required when SnappyMail is used). If this does not happen, a new user with the same email address reuses the previous roundcube data (such as address lists, gpg keys etc).
+
+For safely deleting the user data (and possible the user as well) a script has been introduced. The scripts provides the following information
+
+* commands for deleting mailboxes of unknown users. These users were deleted from Mailu, but still have their mailbox data on the file system.
+* commands for deleting mailboxes and roundcube data for disabled users.
+* commands for deleting users from the Mailu database.
+
+Proceed as following for deleting an user:
+
+1. Disable the to-be-deleted user. This can be done via the Web Administration interface (/admin), the Mailu CLI command user-delete, or the RESTful API. Do **not** delete the user.
+2. Download .\\scripts\\purge_user.sh from the `github project`_. Or clone the Mailu github project.
+3. Copy the script purge_user.sh to the Mailu folder that contains the `docker-compose.yml` file.
+4. Run as root: purge_user.sh
+5. The script will output the commands that can be used for fully purging each disabled user. It will show the instruction for deleting the user from the
+
+   * Dovecot maildir from filesystem (all email data)
+   * Roundcube database (all data saved in roundcube)
+   * Mailu database.
+
+6. Run the commands for deleting all user data for each disabled user.
+
+.. _`github project`: https://github.com/Mailu/Mailu/
+
 Changes in .env don't propagate
 ```````````````````````````````
 
@@ -410,15 +446,15 @@ down and up again. A container restart is not sufficient.
 
 .. code-block:: bash
 
-  docker-compose down && \
-  docker-compose up -d
+  docker compose down && \
+  docker compose up -d
 
 *Issue reference:* `615`_.
 
 SMTP Banner from overrides/postfix.cf is ignored
 ````````````````````````````````````````````````
 
-Any mail related connection is proxied by nginx. Therefore the SMTP Banner is also set by nginx. Overwriting in overrides/postfix.cf does not apply.
+Any mail related connection is proxied by the front container. Therefore the SMTP Banner is also set by front container. Overwriting in overrides/postfix.cf does not apply.
 
 *Issue reference:* `1368`_.
 
@@ -440,8 +476,8 @@ Re-starting the smtp container will be required for changes to take effect.
 
 .. _`2213`: https://github.com/Mailu/Mailu/issues/2213
 
-My emails are getting defered, what can I do?
-`````````````````````````````````````````````
+My emails are getting deferred, what can I do?
+``````````````````````````````````````````````
 
 Emails are asynchronous and it's not abnormal for them to be defered sometimes. That being said, Mailu enforces secure connections where possible using DANE and MTA-STS, both of which have the potential to delay indefinitely delivery if something is misconfigured.
 
@@ -476,7 +512,7 @@ These issues are typically caused by four scenarios:
 #. When ``TLS_FLAVOR=letsencrypt``, it might be that the *certbot* script is not capable of
    obtaining the certificates for your domain. See `letsencrypt issues`_
 #. When ``TLS_FLAVOR=cert``, certificates are supposed to be copied to ``/mailu/certs``.
-   Using an external ``letsencrypt`` program, it tends to happen people copy the whole
+   Using an external ``letsencrypt`` program, it tends to happen when people copy the whole
    ``letsencrypt/live`` directory containing symlinks. Symlinks do not resolve inside the
    container and therefore it breaks the TLS implementation.
 
@@ -488,8 +524,8 @@ to check the logs.
 
 .. code-block:: bash
 
-  docker-compose logs front | less -R
-  docker-compose exec front less /var/log/letsencrypt/letsencrypt.log
+  docker compose logs front | less -R
+  docker compose exec front less /var/log/letsencrypt/letsencrypt.log
 
 Common problems:
 
@@ -546,21 +582,21 @@ inside a container. The ``front`` container does use authentication rate limitin
 down brute force attacks. The same applies to login attempts via the single sign on page.
 
 We *do* provide a possibility to export the logs from the ``front`` service and ``Admin`` service to the host.
-The ``front`` container logs failed logon attempts on SMTP, IMAP and POP3. 
-The ``Admin``container logs failed logon attempt on the single sign on page.
-For this you need to set ``LOG_DRIVER=journald`` or ``syslog``, depending on the log
-manager of the host. You will need to setup the proper Regex in the Fail2Ban configuration.
-Below an example how to do so. 
+The ``front`` container logs failed logon attempts on SMTP, IMAP and POP3.
+The ``Admin`` container logs failed logon attempt on the single sign on page.
+You will need to setup the proper Regex in the Fail2Ban configuration.
+Below an example how to do so.
 
 If you use a reverse proxy in front of Mailu, it is vital to set the environment variables REAL_IP_HEADER and REAL_IP_FROM.
-Without these environment variables, Mailu will not trust the remote client IP passed on by the reverse proxy and as a result your reverse proxy will be banned. 
-See the :ref:`[configuration reference <reverse_proxy_headers>` for more information.
+Without these environment variables, Mailu will not trust the remote client IP passed on by the reverse proxy and as a result your reverse proxy will be banned.
+
+See the :ref:`configuration reference <reverse_proxy_headers>` for more information.
 
 
 Assuming you have a working Fail2Ban installation on the host running your Docker containers,
 follow these steps:
 
-1. In the mailu docker-compose set the logging driver of the front container to journald; and set the tag to mailu-front
+1. In the mailu docker compose set the logging driver of the front container to journald; and set the tag to mailu-front
 
 .. code-block:: bash
 
@@ -569,17 +605,76 @@ follow these steps:
     options:
       tag: mailu-front
 
-2. Add the /etc/fail2ban/filter.d/bad-auth.conf
+2. Add the /etc/fail2ban/filter.d/bad-auth-bots.conf
 
 .. code-block:: bash
 
   # Fail2Ban configuration file
   [Definition]
-  failregex = .* client login failed: .+ client:\ <HOST>
+  failregex = ^\s?\S+ mailu\-front\[\d+\]: \S+ \S+ \[info\] \d+#\d+: \*\d+ client login failed: \"AUTH not supported\" while in http auth state, client: <HOST>, server:
   ignoreregex =
   journalmatch = CONTAINER_TAG=mailu-front
 
-3. Add the /etc/fail2ban/jail.d/bad-auth.conf
+3. Add the /etc/fail2ban/jail.d/bad-auth-bots.conf
+
+.. code-block:: bash
+
+  [bad-auth-bots]
+  enabled = true
+  backend = systemd
+  filter = bad-auth-bots
+  bantime = 604800
+  findtime = 600
+  maxretry = 5
+  action = docker-action-net
+
+The above will block flagged IPs for a week, you can of course change it to your needs.
+
+4.  Add the following to /etc/fail2ban/action.d/docker-action-net.conf
+
+IMPORTANT: You have to install ipset on the host system, eg. `apt-get install ipset` on a Debian/Ubuntu system.
+
+See ipset homepage for details on ipset, https://ipset.netfilter.org/.
+
+.. code-block:: bash
+
+  [Definition]
+
+  actionstart = ipset --create f2b-bad-auth-bots nethash
+                iptables -I DOCKER-USER -m set --match-set f2b-bad-auth-bots src -p tcp -m tcp --dport 25 -j DROP
+
+  actionstop = iptables -D DOCKER-USER -m set --match-set f2b-bad-auth-bots src -p tcp -m tcp --dport 25 -j DROP
+               ipset --destroy f2b-bad-auth-bots
+
+
+  actionban = ipset add -exist f2b-bad-auth-bots <ip>/24
+
+  actionunban = ipset del -exist f2b-bad-auth-bots <ip>/24
+
+Using DOCKER-USER chain ensures that the blocked IPs are processed in the correct order with Docker. See more in: https://docs.docker.com/network/iptables/.
+
+Please note that the provided example will block the subnet from sending any email to the Mailu instance.
+
+5. In the mailu docker-compose set the logging driver of the Admin container to journald; and set the tag to mailu-admin
+
+.. code-block:: bash
+
+  logging:
+    driver: journald
+    options:
+      tag: mailu-admin
+
+6. Add the /etc/fail2ban/filter.d/bad-auth.conf
+
+.. code-block:: bash
+
+  # Fail2Ban configuration file
+  [Definition]
+  failregex = : Authentication attempt from <HOST>(?: for (?:[^ ]+@[^ ]+))? has been rate-limited\.$
+  ignoreregex =
+  journalmatch = CONTAINER_TAG=mailu-admin
+
+7. Add the /etc/fail2ban/jail.d/bad-auth.conf
 
 .. code-block:: bash
 
@@ -588,85 +683,19 @@ follow these steps:
   backend = systemd
   filter = bad-auth
   bantime = 604800
-  findtime = 300
-  maxretry = 10
+  findtime = 900
+  maxretry = 15
   action = docker-action
 
-The above will block flagged IPs for a week, you can of course change it to you needs.
+The above will block flagged IPs for a week, you can of course change it to your needs.
 
-4. In the mailu docker-compose set the logging driver of the Admin container to journald; and set the tag to mailu-admin
-
-.. code-block:: bash
-  
-  logging:
-    driver: journald
-    options:
-      tag: mailu-admin
-
-5. Add the /etc/fail2ban/filter.d/bad-auth-sso.conf
-
-.. code-block:: bash
-
-  # Fail2Ban configuration file
-  [Definition]
-  failregex = .* Login failed for .+ from <HOST>.
-  ignoreregex =
-  journalmatch = CONTAINER_TAG=mailu-admin
-
-6. Add the /etc/fail2ban/jail.d/bad-auth-sso.conf
-
-.. code-block:: bash
-
-  [bad-auth-sso]
-  enabled = true
-  backend = systemd
-  filter = bad-auth-sso
-  bantime = 604800
-  findtime = 300
-  maxretry = 10
-  action = docker-action
-
-The above will block flagged IPs for a week, you can of course change it to you needs.
-
-7. Add the /etc/fail2ban/action.d/docker-action.conf
-  
-Option 1: Use plain iptables
-
-.. code-block:: bash
-
-  [Definition]
-  
-  actionstart = iptables -N f2b-bad-auth
-                iptables -A f2b-bad-auth -j RETURN
-                iptables -I DOCKER-USER -j f2b-bad-auth
-  
-  actionstop = iptables -D DOCKER-USER -j f2b-bad-auth
-               iptables -F f2b-bad-auth
-               iptables -X f2b-bad-auth
-  
-  actioncheck = iptables -n -L DOCKER-USER | grep -q 'f2b-bad-auth[ \t]'
-  
-  actionban = iptables -I f2b-bad-auth 1 -s <ip> -j DROP
-  
-  actionunban = iptables -D f2b-bad-auth -s <ip> -j DROP
-
-Using DOCKER-USER chain ensures that the blocked IPs are processed in the correct order with Docker. See more in: https://docs.docker.com/network/iptables/
-
-Option 2:  Use ipset together with iptables
-IMPORTANT: You have to install ipset on the host system, eg. `apt-get install ipset` on a Debian/Ubuntu system.
-
-See ipset homepage for details on ipset, https://ipset.netfilter.org/.
-
-ipset and iptables provide one big advantage over just using iptables: This setup reduces the overall iptable rules.
-There is just one rule for the bad authentications and the IPs are within the ipset. 
-Specially in larger setups with a high amount of brute force attacks this comes in handy.
-Using iptables with ipset might reduce the system load in such attacks significantly.
+8.  Add the following to /etc/fail2ban/action.d/docker-action.conf
 
 .. code-block:: bash
 
   [Definition]
 
-  actionstart = actionstart = ipset --create f2b-bad-auth iphash
+  actionstart = ipset --create f2b-bad-auth iphash
                 iptables -I DOCKER-USER -m set --match-set f2b-bad-auth src -j DROP
 
   actionstop = iptables -D DOCKER-USER -m set --match-set f2b-bad-auth src -j DROP
@@ -679,7 +708,7 @@ Using iptables with ipset might reduce the system load in such attacks significa
 
 Using DOCKER-USER chain ensures that the blocked IPs are processed in the correct order with Docker. See more in: https://docs.docker.com/network/iptables/
 
-1. Configure and restart the Fail2Ban service
+9. Configure and restart the Fail2Ban service
 
 Make sure Fail2Ban is started after the Docker service by adding a partial override which appends this to the existing configuration.
 
@@ -705,8 +734,8 @@ Restart the Fail2Ban service.
 Users can't change their password from webmail
 ``````````````````````````````````````````````
 
-All users have the abilty to login to the admin interface. Non-admin users
-have only restricted funtionality such as changing their password and the
+All users have the ability to login to the admin interface. Non-admin users
+have only restricted functionality such as changing their password and the
 spam filter weight settings.
 
 *Issue reference:* `503`_.
@@ -728,21 +757,23 @@ In any case, using a dedicated DNS server will improve the performance of your m
 
 Can I learn ham/spam messages from an already existing mailbox?
 ```````````````````````````````````````````````````````````````
-Mailu is supporting automatic spam learning for messages moved to the Junk mailbox. Any email moved from the Junk Folder will learnt as ham. 
+Mailu supports automatic spam learning for messages moved to the Junk mailbox. Any email moved from the Junk Folder will learnt as ham.
 
 If you already have an existing mailbox and want Mailu to learn them all as ham messages, you might run rspamc from within the dovecot container:
 
 .. code-block:: bash
 
   rspamc -h antispam:11334 -P mailu -f 13 fuzzy_add /mail/user\@example.com/.Ham_Learn/cur/
+  rspamc -h antispam:11334 -P mailu learn_ham /mail/user\@example.com/.Ham_Learn/cur/
 
-This should learn every file located in the ``Ham_Learn`` folder from user@example.com 
+This should learn every file located in the ``Ham_Learn`` folder from user@example.com
 
 Likewise, to lean all messages within the folder ``Spam_Learn`` as spam messages :
 
 .. code-block:: bash
 
   rspamc -h antispam:11334 -P mailu -f 11 fuzzy_add /mail/user\@example.com/.Spam_Learn/cur/
+  rspamc -h antispam:11334 -P mailu learn_spam /mail/user\@example.com/.Spam_Learn/cur/
 
 *Issue reference:* `1438`_.
 
@@ -772,14 +803,14 @@ In many cases, Docker Compose will complain about the yaml syntax because it is 
 Unless your distribution has proper up-to-date packages for Compose, we strongly advise that you install it either:
 
  - from the Docker-CE repositories along with Docker CE itself,
- - from PyPI using `pip install docker-compose` or
+ - from PyPI using `pip install docker compose` or
  - from Github by downloading it directly.
 
 Detailed instructions can be found at https://docs.docker.com/compose/install/
 
 *Issue reference:* `853`_.
 
-Why are still spam mails being discarded?
+Why are spam mails being discarded?
 `````````````````````````````````````````
 
 Disabling antispam in the user settings actually disables automatic classification of messages as spam and stops moving them to the `junk` folder. It does not stop spam scanning and filtering.
@@ -793,9 +824,9 @@ Why is SPF failing while properly setup?
 
 Very often, SPF failure is related to Mailu sending emails with a different IP address than the one configured in the env file.
 
-This is mostly due to using a separate IP address for Mailu and still having masquerading nat setup for Docker, which results in a different outbound IP address. You can simply check the email headers on the receiving side to confirm this.
+This is mostly due to using a separate IP address for Mailu and still having masquerading NAT setup for Docker, which results in a different outbound IP address. You can simply check the email headers on the receiving side to confirm this.
 
-If you wish to explicitely nat Mailu outbound traffic, it is usually easy to source-nat outgoing SMTP traffic using iptables :
+If you wish to explicitly NAT Mailu outbound traffic, it is usually easy to source-NAT outgoing SMTP traffic using iptables :
 
 ```
 iptables -t nat -A POSTROUTING -o eth0 -p tcp --dport 25 -j SNAT --to <your mx ip>
@@ -829,7 +860,7 @@ iptables -t nat -A POSTROUTING -o eth0 -p tcp --dport 25 -j SNAT --to <your mx i
 A user gets ``Sender address rejected: Access denied. Please check the`` ``message recipient […] and try again`` even though the sender is legitimate?
 ``````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
-First, check if you are really sure the user is a legitimate sender, i.e. the registered user is authenticated successfully and own either the account or alias he/she is trying to send from. If you are really sure this is correct, then the user might try to errornously send via port 25 insteadof the designated SMTP client-ports. Port 25 is meant for server-to-server delivery, while users should use port 587 or 465.
+First, check if you are really sure the user is a legitimate sender, i.e. the registered user is authenticated successfully and own either the account or alias he/she is trying to send from. If you are really sure this is correct, then the user might try to erroneously send via port 25 instead of the designated SMTP client-ports. Port 25 is meant for server-to-server delivery, while users should use port 587 or 465.
 
 The admin container won't start and its log says ``Critical: your DNS resolver isn't doing DNSSEC validation``
 ``````````````````````````````````````````````````````````````````````````````````````````````````````````````
@@ -844,6 +875,124 @@ We recommend that you run your own DNS resolver (enable unbound and update your 
 We have seen a fair amount of support requests related to the following:
 
 - dnsmasq won't forward DNSSEC results unless instructed to do so. If you are running openwrt or pi-hole, you do need to enable DNSSEC.
+- systemd-resolve won't validate DNSSEC results unless instructed to do so. If you are using it you can check its configuration using ``systemd-resolve --status | grep DNSSEC``
 - `coredns has a bug`_ that we have now worked around
+- `netplan does not play nicely with docker` by default and may need to be configured to leave docker's network alone.
 
 .. _`coredns has a bug`: https://github.com/coredns/coredns/issues/5189
+
+.. _`netplan does not play nicely with docker`: https://github.com/Mailu/Mailu/issues/2868#issuecomment-1606014184
+
+How can I use Mailu without docker?
+```````````````````````````````````
+
+Running Mailu without docker is not supported. If you want to do so, you need to export an environment variable called ``I_KNOW_MY_SETUP_DOESNT_FIT_REQUIREMENTS_AND_WONT_FILE_ISSUES_WITHOUT_PATCHES`` to the ``admin`` container.
+
+We welcome patches but do not have the bandwidth to test and fix issues related to your unsupported setup. If you do want to help, we welcome new maintainers: please get in touch.
+
+How can I add more languages to roundcube's spellchecker?
+`````````````````````````````````````````````````````````
+
+If you are comfortable using an online spellchecker, the easiest is to configure the following via an override:
+
+.. code-block:: php
+
+   $config['spellcheck_engine'] = 'googie';
+   $config['spellcheck_ignore_caps'] = true;
+   $config['spellcheck_ignore_nums'] = true;
+   $config['spellcheck_dictionary'] = true;
+
+If not, you can download the `aspell dictionary`_ you require and place it in ``/usr/share/aspell/`` and then enable it by tweaking the following in the configuration file:
+
+.. code-block:: php
+
+   $config['spellcheck_languages'] = array('en'=>'English', ...);
+
+.. _`aspell dictionary`: http://ftp.gnu.org/gnu/aspell/dict/0index.html
+
+
+I see a lot of "mount: Deactivated successfully." messages in the logs
+``````````````````````````````````````````````````````````````````````
+
+This is a docker & systemd issue: see `this workaround`_
+
+.. _`this workaround`: https://stackoverflow.com/questions/63622619/docker-flooding-syslog-with-run-docker-runtime-logs/69415949#69415949
+
+
+I see a lot of "Unable to lookup the TLSA record for XXX. Is the DNSSEC zone okay on ..." messages in the logs
+``````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+There may be multiple causes for it but if you are running docker 24.0.0, odds are you are `experiencing this docker bug`_ and the workaround is to switch to a different version of docker.
+
+.. _`experiencing this docker bug`: https://github.com/Mailu/Mailu/issues/2827
+
+How can I view and export the logs of a Mailu container?
+````````````````````````````````````````````````````````
+
+In some situations, a separate log is required. For example a separate mail log (from postfix) could be required due to legal reasons.
+
+All Mailu containers log the output to journald. The logs are written to journald with the tag:
+
+| mailu-<service name>
+| where <service-name> is the name of the service in the docker-compose.yml file.
+| For example, the service running postfix is called smtp. To view the postfix logs use:
+
+.. code-block:: bash
+
+  journalctl -t mailu-smtp
+
+Note: ``SHIFT+G`` can be used to jump to the end of the log file. ``G`` can be used to jump back to the top of the log file.
+
+To export the log files from journald to the file system, the logs could be imported into a syslog program like ``rsyslog``.
+Via ``rsyslog`` the container specific logs could be written to a separate file using a filter.
+
+Below are the steps for writing the postfix (mail) logs to a log file on the file system.
+
+1. Install the ``rsyslog`` package. Note: on most distributions this program is already installed.
+2. Edit ``/etc/systemd/journald.conf``.
+3. Enable ``ForwardToSyslog=yes``. Note: on most distributions this is already enabled by default. This forwards journald to syslog.
+4. ``sudo touch /var/log/postfix.log``. This step creates the mail log file.
+5. ``sudo chown syslog:syslog /var/log/postfix.log``. This provides rsyslog the permissions for accessing this file.
+6. Create a new config file in ``/etc/rsyslog.d/export-postfix.conf``
+7. Add ``:programname, contains, "mailu-smtp" /var/log/postfix.log``. This instructs rsyslog to write the logs for mailu-smtp to a log file on file system.
+8. ``sudo systemctl restart systemd-journald.service``
+9. ``sudo systemctl restart rsyslog``
+10. All messages from the smtp/postfix container are now logged to ``/var/log/postfix.log``.
+11. Rsyslog does not perform log rotation. The program (package) ``log rotate`` can be used for this task. Install the ``logrotate`` package.
+12. Modify the existing configuration file for rsyslog: ``sudo nano /etc/logrotate.d/rsyslog``
+13. Add at the top add: ``/var/log/postfix.log``. Of course you can also use your own configuration. This is just an example. A complete example for configuring log rotate is:
+
+.. code-block:: bash
+
+  /var/log/postfix.log
+  {
+       rotate 4
+       weekly
+       missingok
+       notifempty
+       compress
+       delaycompress
+       sharedscripts
+       postrotate
+           /usr/lib/rsyslog/rsyslog-rotate
+       endscript
+  }
+
+.. code-block:: bash
+
+  #!/bin/sh
+  #/usr/lib/rsyslog/rsyslog-rotate
+
+  if [ -d /run/systemd/system ]; then
+      systemctl kill -s HUP rsyslog.service
+  fi
+
+
+Admin container fails to connect to external MariaDB database
+`````````````````````````````````````````````````````````````
+
+If the admin container is `unable to connect to an external MariaDB database due to incompatible collation`_, you may need to change the ``SQLALCHEMY_DATABASE_URI`` setting to ensure the right connector is used.
+
+MariaDB has no support for utf8mb4_0900_ai_ci which is the new default since MySQL version 8.0.
+
+.. _`unable to connect to an external MariaDB database due to incompatible collation`: https://github.com/Mailu/Mailu/issues/3449

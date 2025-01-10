@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 """
 Certificate watcher which reloads nginx or reconfigures it, depending on what
 happens to externally supplied certificates. Only executed by start.py in case
@@ -27,6 +27,9 @@ class ChangeHandler(FileSystemEventHandler):
         if exists("/var/run/nginx.pid"):
             print("Reloading a running nginx")
             system("nginx -s reload")
+        if exists("/run/dovecot/master.pid"):
+            print("Reloading a running dovecot")
+            system("doveadm reload")
 
     @staticmethod
     def reexec_config():

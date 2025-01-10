@@ -6,6 +6,7 @@
 mydomain = {{ DOMAIN }}
 myhostname = {{ HOSTNAMES.split(",")[0] }}
 myorigin = $mydomain
+maillog_file = /dev/stdout
 
 # Queue location
 queue_directory = /queue
@@ -14,13 +15,18 @@ queue_directory = /queue
 message_size_limit = {{ MESSAGE_SIZE_LIMIT }}
 
 # Relayed networks
-mynetworks = 127.0.0.1/32 [::1]/128 {{ SUBNET }}  {% if RELAYNETS %}{{ RELAYNETS.split(",") | join(' ') }}{% endif %}
+mynetworks = 127.0.0.1/32 {{ SUBNET }} {% if SUBNET6 %}[::1]/128 {{ "[{}]/{}".format(*SUBNET6.translate({91: None, 93: None}).split("/")) }}{% endif %} {% if RELAYNETS %}{{ RELAYNETS.split(",") | join(" ") }}{% endif %}
 
 # Empty alias list to override the configuration variable and disable NIS
 alias_maps =
 
 # Podop configuration
 podop = socketmap:unix:/tmp/podop.socket:
+
+postscreen_upstream_proxy_protocol = haproxy
+compatibility_level=3.6
+smtpd_forbid_bare_newline=yes
+smtpd_forbid_unauth_pipelining=no
 
 # Only accept virtual emails
 mydestination =
@@ -36,10 +42,6 @@ smtp_sasl_tls_security_options = noanonymous
 
 # Recipient delimiter for extended addresses
 recipient_delimiter = {{ RECIPIENT_DELIMITER }}
-
-# Only the front server is allowed to perform xclient
-# In kubernetes and Docker swarm, such address cannot be determined using the hostname. Allow for the whole Mailu subnet instead.
-smtpd_authorized_xclient_hosts={{ POD_ADDRESS_RANGE or SUBNET }}
 
 ###############
 # TLS
@@ -81,7 +83,7 @@ virtual_mailbox_maps = ${podop}mailbox
 # Mails are transported if required, then forwarded to Dovecot for delivery
 relay_domains = ${podop}transport
 transport_maps = lmdb:/etc/postfix/transport.map, ${podop}transport
-virtual_transport = lmtp:inet:{{ LMTP_ADDRESS }}
+virtual_transport = lmtp:inet:{{ FRONT_ADDRESS }}:2525
 
 # Sender and recipient canonical maps, mostly for SRS
 sender_canonical_maps = ${podop}sendermap
@@ -110,7 +112,6 @@ check_ratelimit = check_sasl_access ${podop}senderrate
 
 smtpd_client_restrictions =
   permit_mynetworks,
-  check_sender_access ${podop}senderaccess,
   reject_non_fqdn_sender,
   reject_unknown_sender_domain,
   reject_unknown_recipient_domain,
@@ -123,11 +124,13 @@ smtpd_relay_restrictions =
 
 unverified_recipient_reject_reason = Address lookup failure
 
+smtpd_authorized_xclient_hosts={{ SUBNET }}{% if SUBNET6 %},{{ "[{}]/{}".format(*SUBNET6.translate({91: None, 93: None}).split("/")) }}{% endif %}
+
 ###############
 # Milter
 ###############
 
-smtpd_milters = inet:{{ ANTISPAM_MILTER_ADDRESS }}
+smtpd_milters = inet:{{ ANTISPAM_ADDRESS }}:11332
 milter_protocol = 6
 milter_mail_macros = i {mail_addr} {client_addr} {client_name} {auth_authen}
 milter_default_action = tempfail

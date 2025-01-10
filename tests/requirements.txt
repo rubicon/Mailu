@@ -1,2 +1,4 @@
-docker==4.2.2
-colorama==0.4.3
+docker==7.0.0
+colorama==0.4.6
+managesieve==0.8
+requests==2.31.0

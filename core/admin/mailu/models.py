@@ -2,7 +2,6 @@
 """
 
 import os
-import smtplib
 import json
 
 from datetime import date
@@ -15,6 +14,7 @@ import passlib.context
 import passlib.hash
 import passlib.registry
 import time
+import logging
 import os
 import smtplib
 import idna
@@ -25,9 +25,14 @@ from flask import current_app as app
 from sqlalchemy.ext import declarative
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.inspection import inspect
+from sqlalchemy.orm.attributes import flag_modified
 from werkzeug.utils import cached_property
 
 from mailu import dkim, utils
+
+
+# silence AttributeError: module 'bcrypt' has no attribute '__about__'
+logging.getLogger('passlib').setLevel(logging.ERROR)
 
 
 db = flask_sqlalchemy.SQLAlchemy()
@@ -75,7 +80,7 @@ class CommaSeparatedList(db.TypeDecorator):
     """ Stores a list as a comma-separated string, compatible with Postfix.
     """
 
-    impl = db.String
+    impl = db.String(4096)
     cache_ok = True
     python_type = list
 
@@ -96,7 +101,7 @@ class JSONEncoded(db.TypeDecorator):
     """ Represents an immutable structure as a json-encoded string.
     """
 
-    impl = db.String
+    impl = db.String(255)
     cache_ok = True
     python_type = str
 
@@ -154,12 +159,9 @@ class Base(db.Model):
             self.__hashed = id(self) if primary is None else hash(primary)
         return self.__hashed
 
-
-# Many-to-many association table for domain managers
-managers = db.Table('manager', Base.metadata,
-    db.Column('domain_name', IdnaDomain, db.ForeignKey('domain.name')),
-    db.Column('user_email', IdnaEmail, db.ForeignKey('user.email'))
-)
+    def dont_change_updated_at(self):
+        """ Mark updated_at as modified, but keep the old date when updating the model"""
+        flag_modified(self, 'updated_at')
 
 
 class Config(Base):
@@ -176,6 +178,10 @@ def _save_dkim_keys(session):
         if isinstance(obj, Domain):
             obj.save_dkim_key()
 
+def _get_managers():
+    return managers
+
+
 class Domain(Base):
     """ A DNS domain that has mail addresses associated to it.
     """
@@ -183,7 +189,7 @@ class Domain(Base):
     __tablename__ = 'domain'
 
     name = db.Column(IdnaDomain, primary_key=True, nullable=False)
-    managers = db.relationship('User', secondary=managers,
+    managers = db.relationship('User', secondary=_get_managers,
         backref=db.backref('manager_of'), lazy='dynamic')
     max_users = db.Column(db.Integer, nullable=False, default=-1)
     max_aliases = db.Column(db.Integer, nullable=False, default=-1)
@@ -228,9 +234,7 @@ class Domain(Base):
         """ return DKIM record for domain """
         if self.dkim_key:
             selector = app.config['DKIM_SELECTOR']
-            txt = f'v=DKIM1; k=rsa; p={self.dkim_publickey}'
-            record = ' '.join(f'"{txt[p:p+250]}"' for p in range(0, len(txt), 250))
-            return f'{selector}._domainkey.{self.name}. 600 IN TXT {record}'
+            return f'{selector}._domainkey.{self.name}. 600 IN TXT "v=DKIM1; k=rsa; p={self.dkim_publickey}"'
 
     @cached_property
     def dns_dmarc(self):
@@ -248,11 +252,12 @@ class Domain(Base):
         """ return DMARC report record for mailu server """
         if self.dkim_key:
             domain = app.config['DOMAIN']
-            return f'{self.name}._report._dmarc.{domain}. 600 IN TXT "v=DMARC1"'
+            return f'{self.name}._report._dmarc.{domain}. 600 IN TXT "v=DMARC1;"'
 
     @cached_property
     def dns_autoconfig(self):
         """ return list of auto configuration records (RFC6186) """
+        ports = {int(port.strip()) for port in app.config['PORTS'].split(',')}.union({465, 993})
         hostname = app.config['HOSTNAME']
         protocols = [
             ('imap', 143, 20),
@@ -268,18 +273,23 @@ class Domain(Base):
             ])
 
         return [
-            f'_{proto}._tcp.{self.name}. 600 IN SRV {prio} 1 {port} {hostname}.'
+            f'_{proto}._tcp.{self.name}. 600 IN SRV {prio} 1 {port} {hostname}.' if port in ports else f'_{proto}._tcp.{self.name}. 600 IN SRV 0 0 0 .'
             for proto, port, prio
             in protocols
-        ]+[f'autoconfig.{self.name}. 600 IN CNAME {hostname}.']
+        ]+[f'autoconfig.{self.name}. 600 IN CNAME {hostname}.', f'autodiscover.{self.name}. 600 IN CNAME {hostname}.']
 
     @cached_property
     def dns_tlsa(self):
         """ return TLSA record for domain when using letsencrypt """
         hostname = app.config['HOSTNAME']
         if app.config['TLS_FLAVOR'] in ('letsencrypt', 'mail-letsencrypt'):
-            # current ISRG Root X1 (RSA 4096, O = Internet Security Research Group, CN = ISRG Root X1) @20210902
-            return f'_25._tcp.{hostname}. 86400 IN TLSA 2 1 1 0b9fa5a59eed715c26c1020c711b4f6ec42d58b0015e14337a39dad301c5afc3'
+            return [
+                # current ISRG Root X1 (RSA 4096, O = Internet Security Research Group, CN = ISRG Root X1) @20210902
+                f'_25._tcp.{hostname}. 86400 IN TLSA 2 1 1 0b9fa5a59eed715c26c1020c711b4f6ec42d58b0015e14337a39dad301c5afc3',
+                # current ISRG Root X2 (ECDSA P-384, O = Internet Security Research Group, CN = ISRG Root X2) @20240311
+                f'_25._tcp.{hostname}. 86400 IN TLSA 2 1 1 762195c225586ee6c0237456e2107dc54f1efc21f61a792ebd515913cce68332',
+            ]
+        return []
 
     @property
     def dkim_key(self):
@@ -344,6 +354,54 @@ class Alternative(Base):
     domain_name = db.Column(IdnaDomain, db.ForeignKey(Domain.name))
     domain = db.relationship(Domain,
         backref=db.backref('alternatives', cascade='all, delete-orphan'))
+
+    @property
+    def dns_dkim(self):
+        """ return DKIM record for domain """
+        if self.domain.dkim_key:
+            selector = app.config['DKIM_SELECTOR']
+            return f'{selector}._domainkey.{self.name}. 600 IN TXT "v=DKIM1; k=rsa; p={self.domain.dkim_publickey}"'
+
+    @cached_property
+    def dns_dmarc(self):
+        """ return DMARC record for domain """
+        if self.domain.dkim_key:
+            domain = app.config['DOMAIN']
+            rua = app.config['DMARC_RUA']
+            rua = f' rua=mailto:{rua}@{domain};' if rua else ''
+            ruf = app.config['DMARC_RUF']
+            ruf = f' ruf=mailto:{ruf}@{domain};' if ruf else ''
+            return f'_dmarc.{self.name}. 600 IN TXT "v=DMARC1; p=reject;{rua}{ruf} adkim=s; aspf=s"'
+
+    @cached_property
+    def dns_dmarc_report(self):
+        """ return DMARC report record for mailu server """
+        if self.domain.dkim_key:
+            domain = app.config['DOMAIN']
+            return f'{self.name}._report._dmarc.{domain}. 600 IN TXT "v=DMARC1;"'
+
+    @cached_property
+    def dns_mx(self):
+        """ return MX record for domain """
+        hostname = app.config['HOSTNAME']
+        return f'{self.name}. 600 IN MX 10 {hostname}.'
+
+    @cached_property
+    def dns_spf(self):
+        """ return SPF record for domain """
+        hostname = app.config['HOSTNAME']
+        return f'{self.name}. 600 IN TXT "v=spf1 mx a:{hostname} ~all"'
+
+    def check_mx(self):
+        """ checks if MX record for domain points to mailu host """
+        try:
+            hostnames = set(app.config['HOSTNAMES'].split(','))
+            return any(
+                rset.exchange.to_text().rstrip('.') in hostnames
+                for rset in dns.resolver.resolve(self.name, 'MX')
+            )
+        except dns.exception.DNSException:
+            return False
 
 
 class Relay(Base):
@@ -415,14 +473,18 @@ class Email(object):
 
     def sendmail(self, subject, body):
         """ send an email to the address """
-        f_addr = f'{app.config["POSTMASTER"]}@{idna.encode(app.config["DOMAIN"]).decode("ascii")}'
-        with smtplib.SMTP(app.config['HOST_AUTHSMTP'], port=10025) as smtp:
-            to_address = f'{self.localpart}@{idna.encode(self.domain_name).decode("ascii")}'
-            msg = text.MIMEText(body)
-            msg['Subject'] = subject
-            msg['From'] = f_addr
-            msg['To'] = to_address
-            smtp.sendmail(f_addr, [to_address], msg.as_string())
+        try:
+            f_addr = f'{app.config["POSTMASTER"]}@{idna.encode(app.config["DOMAIN"]).decode("ascii")}'
+            with smtplib.LMTP(host=app.config['FRONT_ADDRESS'], port=2525) as lmtp:
+                to_address = f'{self.localpart}@{idna.encode(self.domain_name).decode("ascii")}'
+                msg = text.MIMEText(body)
+                msg['Subject'] = subject
+                msg['From'] = f_addr
+                msg['To'] = to_address
+                lmtp.sendmail(f_addr, [to_address], msg.as_string())
+            return True
+        except smtplib.SMTPException:
+            return False
 
     @classmethod
     def resolve_domain(cls, email):
@@ -439,10 +501,15 @@ class Email(object):
         localpart_stripped = None
         stripped_alias = None
 
-        delim = os.environ.get('RECIPIENT_DELIMITER')
-        if delim in localpart:
-            localpart_stripped = localpart.rsplit(delim, 1)[0]
+        if delims := os.environ.get('RECIPIENT_DELIMITER'):
+            try:
+                pos = next(i for i, c in enumerate(localpart) if c in delims)
+            except StopIteration:
+                pass
+            else:
+                localpart_stripped = localpart[:pos]
 
+        # is localpart@domain_name or localpart_stripped@domain_name an user?
         user = User.query.get(f'{localpart}@{domain_name}')
         if not user and localpart_stripped:
             user = User.query.get(f'{localpart_stripped}@{domain_name}')
@@ -450,19 +517,18 @@ class Email(object):
         if user:
             email = f'{localpart}@{domain_name}'
 
-            if user.forward_enabled:
-                destination = user.forward_destination
-                if user.forward_keep or ignore_forward_keep:
-                    destination.append(email)
-            else:
-                destination = [email]
+            if not user.forward_enabled:
+                return [email]
 
+            destination = user.forward_destination
+            if user.forward_keep or ignore_forward_keep:
+                destination.append(email)
             return destination
 
-        pure_alias = Alias.resolve(localpart, domain_name)
-
-        if pure_alias and not pure_alias.wildcard:
-            return pure_alias.destination
+        # is localpart, domain_name or localpart_stripped@domain_name an alias?
+        if pure_alias := Alias.resolve(localpart, domain_name):
+            if not pure_alias.wildcard:
+                return pure_alias.destination
 
         if stripped_alias := Alias.resolve(localpart_stripped, domain_name):
             return stripped_alias.destination
@@ -492,6 +558,7 @@ class User(Base, Email):
     # Features
     enable_imap = db.Column(db.Boolean, nullable=False, default=True)
     enable_pop = db.Column(db.Boolean, nullable=False, default=True)
+    allow_spoofing = db.Column(db.Boolean, nullable=False, default=False)
 
     # Filters
     forward_enabled = db.Column(db.Boolean, nullable=False, default=False)
@@ -509,7 +576,8 @@ class User(Base, Email):
     displayed_name = db.Column(db.String(160), nullable=False, default='')
     spam_enabled = db.Column(db.Boolean, nullable=False, default=True)
     spam_mark_as_read = db.Column(db.Boolean, nullable=False, default=True)
-    spam_threshold = db.Column(db.Integer, nullable=False, default=80)
+    spam_threshold = db.Column(db.Integer, nullable=False, default=lambda:int(app.config.get("DEFAULT_SPAM_THRESHOLD", 80)))
+    change_pw_next_login = db.Column(db.Boolean, nullable=False, default=False)
 
     # Flask-login attributes
     is_authenticated = True
@@ -537,8 +605,8 @@ class User(Base, Email):
         now = date.today()
         return (
             self.reply_enabled and
-            self.reply_startdate < now and
-            self.reply_enddate > now
+            self.reply_startdate <= now and
+            self.reply_enddate >= now
         )
 
     @property
@@ -610,11 +678,15 @@ in clear-text regardless of the presence of the cache.
             self._credential_cache[self.get_id()] = (self.password.split('$')[3], passlib.hash.pbkdf2_sha256.using(rounds=1).hash(password))
         return result
 
-    def set_password(self, password, raw=False):
-        """ Set password for user
+    def set_password(self, password, raw=False, keep_sessions=None):
+        """ Set password for user and destroy all web sessions except those in keep_sessions
             @password: plain text password to encrypt (or, if raw is True: the hash itself)
+            @keep_sessions: True if all the sessions should be preserved, otherwise a
+set() containing the sessions to keep
         """
         self.password = password if raw else User.get_password_context().hash(password)
+        if keep_sessions is not True and self.email is not None:
+            utils.MailuSessionExtension.prune_sessions(uid=self.email, keep=keep_sessions)
 
     def get_managed_domains(self):
         """ return list of domains this user can manage """
@@ -719,7 +791,7 @@ class Token(Base):
     user = db.relationship(User,
         backref=db.backref('tokens', cascade='all, delete-orphan'))
     password = db.Column(db.String(255), nullable=False)
-    ip = db.Column(db.String(255))
+    ip = db.Column(CommaSeparatedList, nullable=True, default=list)
 
     def check_password(self, password):
         """ verifies password against stored hash
@@ -762,6 +834,8 @@ class Fetch(Base):
     username = db.Column(db.String(255), nullable=False)
     password = db.Column(db.String(255), nullable=False)
     keep = db.Column(db.Boolean, nullable=False, default=False)
+    scan = db.Column(db.Boolean, nullable=False, default=False)
+    folders = db.Column(CommaSeparatedList, nullable=True, default=list)
     last_check = db.Column(db.DateTime, nullable=True)
     error = db.Column(db.String(1023), nullable=True)
 
@@ -770,6 +844,13 @@ class Fetch(Base):
             f'<Fetch #{self.id}: {self.protocol}{"s" if self.tls else ""}:'
             f'//{self.username}@{self.host}:{self.port}>'
         )
+
+
+# Many-to-many association table for domain managers
+managers = db.Table('manager', Base.metadata,
+    db.Column('domain_name', IdnaDomain, db.ForeignKey(Domain.name)),
+    db.Column('user_email', IdnaEmail, db.ForeignKey(User.email))
+)
 
 
 class MailuConfig:

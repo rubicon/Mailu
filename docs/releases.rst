@@ -1,6 +1,496 @@
 Release notes
 =============
 
+Mailu 2024.06 - 2024-06
+-----------------------
+
+Mailu 2024.06 is available. This release contains new features and many bug fixes. Please at least read the section `upgrading` before attempting to upgrade to the new release.
+
+To make clear you can only go forward with upgrades, we have changed the version naming scheme to Year.Month.Minor.
+It is only possible to downgrade between minor versions (e.g. 2024.06.3 to 2024.06.1).
+
+Highlights
+``````````
+
+Managesieve sieve support
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+It is now also possible to use `an external sieve client <http://sieve.info/clients>`_ for managing sieve rules using port 4190. Previously sieve filters could only be edited through webmails.
+
+RESTful API enhancements
+^^^^^^^^^^^^^^^^^^^^^^^^
+The User interface is enhanced with the quota bytes used (quota_bytes_used) attribute. This attribute states the usage (in bytes) of the mailbox. In combination with the attribute quota_bytes, it is possible to check how much storage an user has left via the RESTful API.
+
+The new `token` endpoint allows the management of authentication tokens. It is **strongly** recommended to create authentication tokens for all users and to configure email clients to use these authentication tokens for connecting to Mailu instead of user passwords. Tokens are not subject to rate-limiting and are verified server-side in a less resource intensive way. Their usage can be enforced using the newly introduced `AUTH_REQUIRE_TOKENS <https://mailu.io/master/configuration.html#advanced-settings>`_ setting.
+
+Force password change
+^^^^^^^^^^^^^^^^^^^^^
+This new feature has been introduced to coerce a user into changing his password. When a password is changed, all associated sessions are invalidated.
+
+This setting can be configured via:
+
+* Admin webui
+* Mailu cli command `config-import`
+* RESTful API via the User endpoint and attribute `change_pw_next_login`
+
+Translations
+^^^^^^^^^^^^
+
+The following translations for the Admin webui have been added:
+
+* Chinese - thanks to `tryweb <https://github.com/tryweb>`_ and `darkclip <https://github.com/darkclip>`_
+* Persion - (a.k.a Farsi) `hosni <https://github.com/hosni>`_
+* Ukrainian - thanks to `Prosta4okua <https://github.com/Prosta4okua>`_
+* Belarusian - thanks to `spoooyders <https://github.com/spoooyders>`_
+
+All language translations are handled by the community. If you see a translation error for your native language, consider submitting a pull request to address this.
+
+Download zonefile on domain details page
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+On the domain details page a download option is added for downloading the zone file. This zone file can be used to easily import all Mailu DNS settings.
+
+Roundcube spellchecker
+^^^^^^^^^^^^^^^^^^^^^^
+The roundcube spellchecker can be configured to support languages other than English. To configure alternative languages, please refer to the FAQ entry: `How can I add more languages to roundcube's spellchecker`.
+
+Improved mailbox indexer and full attachment indexing
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Full Text Search has now been improved and server-side search has been enabled by default on webmails. Other email clients may need to be reconfigured to ensure searches are performed server-side.
+
+The dovecot indexer has been switched from fts-xapian to fts-flatcurve. In the future this will be the new default indexer for dovecot. This indexer is quicker and results in smaller index files.
+
+Apache Tika has been added to Mailu to add support for attachments indexing. The server-side search functionality now crawls through both emails and their attachments (including office documents, PDFs, images via OCR).
+
+Refer to `FULL_TEXT_SEARCH` in the `configuration reference` to enable indexing for non-English languages.
+
+After upgrading, the new indexes are not automatically created. To create these after upgrading Mailu:
+
+From `bash` run:
+
+.. code-block:: bash
+
+    find /mailu/mail -type d -name xapian-indexes -prune -exec rm -r {} \+
+
+Via docker compose run (to force reindexing):
+
+.. code-block:: bash
+
+    docker compose exec imap doveadm fts rescan -A
+    docker compose exec imap doveadm user '*'|while read u; do echo "re-indexing $u";docker compose exec -T imap doveadm index -u $u '*'; done
+
+
+Introduction AUTH_REQUIRE_TOKENS
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The environment variable `AUTH_REQUIRE_TOKENS` has been introduced. This setting can be enabled to force  email clients to use authentication tokens (instead of passwords) for authenticating to Mailu. Note that authentication tokens can now also be generated via the RESTful API.
+
+It is recommended to use authentication tokens instead of passwords for connecting email clients to Mailu as verifying them is less resource intensive server-side and they are not subject to rate limits (since they cannot be brute-forced online by a potential attacker).
+
+Improved PROXY PROTOCOL and open ports settings
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+It is now possible to explicitly configure what ports must use the PROXY PROTOCOL. Refer to PROXY_PROTOCOL in the configuration reference for more information.
+
+The newly introduced PORTS variable can be used to configure what service should be enabled. efer to PORTS in the configuration reference for more information.
+
+
+Change in behaviour
+```````````````````
+
+POSTFIX_LOG_FILE removed
+^^^^^^^^^^^^^^^^^^^^^^^^
+The setting POSTFIX_LOG_FILE and its functionality has been removed from Mailu. To log to file (for any container) it is possible to use journald and rsyslogd.
+
+The new FAQ entry `How can I view and export the logs of a Mailu container?` describes how log files can be viewed via journald. It also provides instructions for how to install and configure rsyslogd for saving container logs to file system (including log rotation).
+
+
+Emails marked by clamav are rejected now. These used to be silently dropped
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+In the past emails marked by clamav (the virusscanner) were dropped. Now these emails are rejected. That means that the person who sent the email receives a reply that the email was rejected due to the email being flagged by clamav.
+
+STARTTLS ports disabled by default
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+By default the STARTTLS ports are disabled. That means that the ports for the following protocols are closed:
+
+* IMAP (143)
+* POP3 (110)
+* Submission (587)
+
+For more information why only enabled implicit TLS is safer than also allowing opportunistic TLS, please refer to `https://nostarttls.secvuln.info <https://nostarttls.secvuln.info/>`_ .
+To re-enable these ports, use the PORTS variable. For more information refer to the configuration reference.
+
+
+Upgrading
+`````````
+
+Before upgrading
+^^^^^^^^^^^^^^^^
+Via setup.mailu.io generate the new docker-compose.yml file and mailu.env file. If tika is enabled (enabling searching through attachments), then 1 to 2GB of extra RAM memory is required. Re-add any customizations in mailu.env. Before making changes to mailu.env, check the `configuration reference` page on mailu.io. Check if the setting is still in use before adding it to the new `mailu.env` file.
+
+If POSTFIX_LOG_FILE was used, refer to the new FAQ entry `How can I view and export the logs of a Mailu container?` on how to configure similar functionality. POSTFIX_LOG_FILE is deprecated. Mailu will ignore this setting.
+
+If a reverse proxy is used on the same host, consider switching to traefik using the updated instructions. Refer to `Using an external reverse proxy` on mailu.io. With these updated instructions Mailu will handle requesting all certificates. It is not required anymore to copy certificates from the reverse proxy to Mailu.
+
+After upgrading
+^^^^^^^^^^^^^^^
+After upgrading Mailu, perform the followings tasks.
+
+Recreate the dovecot indexes:
+*****************************
+From `bash` run:
+
+.. code-block:: bash
+
+    find /mailu/mail -type d -name xapian-indexes -prune -exec rm -r {} \+
+
+Via docker compose run (to force reindexing):
+
+.. code-block:: bash
+
+    docker compose exec imap doveadm fts rescan -A
+    docker compose exec imap doveadm user '*'|while read u; do echo "re-indexing $u";docker compose exec -T imap doveadm index -u $u '*'; done
+
+
+Enabled the hardened memory allocator
+*************************************
+View the admin container logs via `docker compose logs admin`
+
+.. code-block:: bash
+
+    WARNING:root:Your CPU has Advanced Vector Extensions available, we recommend you enable hardened-malloc earlier in the boot process by adding LD_PRELOAD=/usr/lib/libhardened_malloc.so to your mailu.env
+
+
+**Only** if the above message is logged, then the hardened malloc can be enabled by adding the following line to `mailu.env`.
+
+.. code-block:: bash
+
+    LD_PRELOAD=/usr/lib/libhardened_malloc.so
+
+Recreate all docker containers (`docker compose up -d`) for the changes to be propagated.
+
+
+
+Mailu 2.0 - 2023-04-03
+----------------------
+
+Mailu 2.0 is finally available. It is vital to read the `Upgrading` section before upgrading to Mailu 2.0 as it introduces major features and breaking changes from 1.9.
+
+The Helm Chart project will be updated soon after this release.
+
+The Mailu project has moved to ghcr.io for hosting the docker images. The images on docker.io will be taken down after this release.
+
+Highlights
+``````````
+
+This is an overview of the major features introduced in Mailu 2.0.
+
+Multi-arch images (ARM support)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Mailu project now ships multi-arch images for the architectures:
+
+- linux/amd64.
+- linux/arm64/v8.
+- linux/arm/v7.
+
+It is now possible to run Mailu on most ARM hardware such as the Raspberry Pi.
+
+Auto-configuration for client
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+On the domain details page, there are new DNS records for enabling DNS auto-client configuration.
+Provided they are configured, email clients will make use of them to auto-configure.
+
+If a reverse proxy is in use, settings might have to be tweaked.
+
+For Apple users, the client setup page now offers an autoconfiguration link to automatically configure
+their device.
+
+RESTFul API
+^^^^^^^^^^^
+
+Mailu offers a RESTful API for changing the Mailu configuration.
+Now, anything that can be configured via the Mailu web administration interface
+can also be configured via the Mailu RESTful API.
+
+Configuring a new domain or add new users can be fully automated now.
+
+The current API makes use of a single API token for authentication.
+In a future release this will likely be re-visited.
+
+For more information refer to the :ref:`Mailu RESTful API <mailu_restful_api>` page.
+
+Header authentication support (use external identity providers)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+It is now possible to use different authentication systems (such as keycloak, authentik, vouch-proxy) to handle the authentication of Mailu users.
+This can be used to enable Single Sign On from other IDentity Providers via protocols such as OIDC or SAML2.
+
+For more information see :ref:`Header authentication using an external proxy <header_authentication>` in the configuration reference.
+
+Better anti-spoofing protection
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Previously Mailu would reject emails where an attacker spoofs the envelope-From. Now Mailu also checks the header-From for any hosted domain.
+It won't let any email which pretends to be for any of the local domains through unless they pass DMARC. This means that if you intend on sending emails for a domain hosted on the Mailu instance to the Mailu instance from somwhere else, you must setup DMARC.
+
+Implement a password policy
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In line with security best practices from `NIST (Special Publication 800-63B) <https://pages.nist.gov/800-63-3/sp800-63b.html#5111-memorized-secret-authenticators>`_, we have introduced a password policy.
+
+Passwords now need to:
+
+- be at least 8 characters long.
+- not be listed on `HaveIBeenPwned <https://haveibeenpwned.com/Passwords>`_.
+
+
+Significant improvements to the Rate-limiter
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Now the rate limiter will only take distinct attempts into account. We have two different types of checks:
+
+- to prevent crendential bruteforce (an attacker trying to guess a password), we limit the maximal amount of attempts an attacker has for a given account (from any IP address).
+- to prevent password spraying (an attacker trying the same common password on all accounts he can enumerate), we limit the maximal number of non-existing accounts an attacker can attempt to authenticate against from a given network subnet.
+
+We have also implemented state-of-the-art features such as `Device Cookies <https://owasp.org/www-community/Slow_Down_Online_Guessing_Attacks_with_Device_Cookies>`_ and IP-whitelisting post-authentication to ensure we don't lock genuine users out.
+
+Rate-limiters have a bad name because they are often misunderstood. If you have used Mailu's rate-limiter in the past and had a bad experience please consider giving it another try after upgrading.
+
+Remember the login URL
+^^^^^^^^^^^^^^^^^^^^^^
+
+Mailu will now remember which URL was requested and redirect you to it post-authentication.
+
+This functionality can be used by visiting a "deep" URL E.g.
+
+- https://test.mailu.io/admin
+- https://test.mailu.io/webmail
+
+This results in a login page with a single login button. To access the normal login page, visit the root url.
+
+- https://test.mailu.io
+
+Users who only use the /admin endpoint can now bookmark https://test.mailu.io/admin. When logging in, it is possible to use the `Enter` key again to login (this will not login the webmail but admin).
+
+Introduction of SnappyMail
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Rainloop webmail client has been replaced with SnappyMail.
+The Rainloop project has multiple long outstanding security bugs. For this reason the Mailu project looked for alternatives.
+SnappyMail is a fork of Rainloop focussed on performance and security. It offers a similar experience as Rainloop.
+
+Do not mark spam as read
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+In the user settings it is now possible to configure if a received spam email must be marked as read.
+It is possible to see if you received spam now.
+
+OLETools
+^^^^^^^^
+
+`OLETools <https://github.com/decalage2/oletools>`_ is introduced to block bad macros in Microsoft Office documents. OLETools is able to scan Microsoft Office documents and determine if a macro is malicous.
+
+By default attachments with know bad/executable file extensions (such as ``.exe``) are blocked. See the FAQ for more information on updating the list of blocked file extensions.
+
+New override system for Rspamd
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The override system for Rspamd has been overhauled. While the config files were first completely overridden, they are now merged.
+Now overrides are placed in the location (in the Rspamd/Antispam container) /overrides.
+
+If you use your own map files, change the location to ``/overrides/myMapFile.map`` in the corresponding conf file.
+For example when overriding multimap.conf that use a custom ``.map`` file:
+
+.. code-block:: bash
+
+  #multimap.conf
+  LOCAL_BL_DOMAIN {
+    type = "from";
+    filter = "email:domain";
+    map = "/overrides/blacklist.map";
+    score = 15;
+    description = "Senders domain part is on the local blacklist";
+    group = "local_bl";
+  }
+
+It works as following.
+
+* If the override file overrides a Mailu defined config file,
+  it will be included in the Mailu config file with lowest priority.
+  This means it will merge with existing sections.
+
+* If the override file does not override a Mailu defined config file,
+  then the file will be placed in the rspamd local.d folder.
+  It will merge with existing sections.
+
+For more information, see the description of the local.d folder on the rspamd website:
+https://www.rspamd.com/doc/faq.html#what-are-the-locald-and-overrided-directories
+
+
+Add a button to the roundcube interface that gets you back to the admin interface
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Small feature, but so handy. The menu in Roundcube now shows a button to go the the web administration interface.
+As a user you can now go back to your profile page where you can change your password or spam settings. And then go back to Roundcube again.
+
+PROXY PROTOCOL Support
+^^^^^^^^^^^^^^^^^^^^^^
+
+Reverse proxies can connect to Mailu with the `proxy protocol <https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt>`_ for HTTP and Mail. Below is a small example for Traefik connecting via proxy protocol to Mailu
+
+.. code-block:: bash
+
+  # Static configuration
+  providers:
+  file:
+    directory: "/opt/traefik/conf"
+
+  entryPoints:
+    mailu-web:
+      # Listen on port 8081 for incoming requests
+      address: :443
+    mailu-smtp:
+      address: :25
+    mailu-imaps:
+      address: :993
+    mailu-smtps:
+      address: :465
+    mailu-starttls:
+      address: :587
+
+  # From dynamic configuration /opt/traefik/conf
+  tls:
+    certificates:
+      - certFile: /etc/letsencrypt/live/mydomain.com/fullchain.pem
+        keyFile: /etc/letsencrypt/live/mydomain.com/privkey.pem
+
+  tcp:
+    routers:
+      mailu-web:
+        entryPoints:
+          - mailu-web
+        rule: "HostSNI(`*`)"
+        service: "mailu-web"
+      mailu-smtp:
+        entryPoints:
+          - mailu-smtp
+        rule: "HostSNI(`*`)"
+        service: "mailu-smtp"
+      mailu-imaps:
+        entryPoints:
+          - mailu-imaps
+        rule: "HostSNI(`*`)"
+        service: "mailu-imaps"
+      mailu-smtps:
+        entryPoints:
+          - mailu-smtps
+        rule: "HostSNI(`*`)"
+        service: "mailu-smtps"
+      mailu-starttls:
+        entryPoints:
+          - mailu-starttls
+        rule: "HostSNI(`*`)"
+        service: "mailu-starttls"
+    services:
+      mailu-web:
+        loadBalancer:
+          proxyProtocol:
+            version: 2
+          servers:
+            - address: "MailuServer:443"
+      mailu-smtp:
+        loadBalancer:
+          proxyProtocol:
+            version: 2
+          servers:
+            - address: "MailuServer:25"
+      mailu-smtps:
+        loadBalancer:
+          proxyProtocol:
+            version: 2
+          servers:
+            - address: "MailuServer:465"
+      mailu-starttls:
+        loadBalancer:
+          proxyProtocol:
+            version: 2
+          servers:
+            - address: "MailuServer:587"
+      mailu-imaps:
+        loadBalancer:
+          proxyProtocol:
+            version: 2
+          servers:
+            - address: "MailuServer:993"
+
+Security hardening
+^^^^^^^^^^^^^^^^^^
+
+We have gone further than ever. Now Mailu containers drop their privileges and communicate on separate networks. They also share the same base image where on x86 `a Hardened memory allocator <https://github.com/GrapheneOS/hardened_malloc>`_ is configured.
+
+Webmails relying on PHP now make use of `Snuffleupagus <https://github.com/jvoisin/snuffleupagus>`_.
+
+
+New Functionality & Improvements
+````````````````````````````````
+
+For a list of all the changes (including bug fixes) refer to `CHANGELOG.md` in the root folder of the Mailu github project.
+
+A short summary of the other new features:
+
+- Features: Allow other folders to be synced by fetchmail.
+- Features: Update the webmail images.
+  Roundcube:
+
+    - Switch to base image (alpine).
+    - Switch to php-fpm.
+
+  SnappyMail:
+
+    - Switch to base image.
+    - Upgrade php7 to php8.
+
+- Features: Add FETCHMAIL_ENABLED to toggle the fetchmail functionality in the admin interface.
+- Features: Create a polite and turtle delivery queue to accommodate destinations that expect emails to be sent slowly.
+- Features: Add support for custom NGINX config in /etc/nginx/conf.d.
+- Features: Configurable default spam threshold used for new users.
+- Features: Create a GUI for WILDCARD_SENDERS.
+- Features: Prevent signups with accounts for which an SQL-LIKE alias exists.
+- Features: Introduce TLS_PERMISSIVE, a new advanced setting to harden cipher configuration on port 25. Changing the default is strongly discouraged, please read the documentation before doing so.
+- Features: Implement the required glue to make "doveadm -A" work.
+- Features: Drop postfix rsyslog localhost messages with IPv6 address.
+- Features: Improved IPv6 support.
+- Features: Provide a changelog for minor releases. The github release will now:
+
+  * Provide the changelog message from the newsfragment of the PR that triggered the backport.
+  * Provide a github link to the PR/issue of the PR that was backported.
+
+- Enhance CI/CD workflow with retry functionality. All steps for building images are now automatically
+  retried. If a build temporarily fails due to a network error, the retried step will still succeed.
+- Features: Add Czech translation for web administration interface.
+
+
+Upgrading
+`````````
+
+Upgrade should run fine as long as you generate a new compose & mailu.env and then reapply custom config settings to mailu.env.
+Carefully read the :ref:`configuration page <common_cfg>` to check what old settings have been removed. If a setting is not listed anymore
+on the :ref:`configuration page <common_cfg>`, then this setting has been removed.
+
+If you use Fail2Ban, then the Fail2Ban intructions have been improved. It is **mandatory** to remove your Fail2Ban config
+and re-apply it using the instructions from :ref:`updated Fail2Ban documentation <Fail2Ban>`.
+
+If you use overrides for Rspamd, then please note that overrides are now placed in the location ``/overrides`` in the rspamd container.
+If you use your own map files, change the location to ``/overrides/myMapFile.map`` in the corresponding rspamd conf file.
+
+To use the new autoconfig endpoint and Mailu RESTFul API, you may need to update your reverse proxy config.
+If you use ``TLS_FLAVOR=letsencrypt``, add autoconfig.myhostname.com to the setting ``HOSTNAMES=`` in mailu.env to generate a certificate for the autoconfig endpoint as well.
+After starting your Mailu deployment, please refer to the section `DNS client auto-configuration entries` on the domain details page
+in the web administration interface for the exact name of the autoconfig endpoint (https://test.mailu.io/admin/domain/details/test.mailu.io).
+
+It is also recommended to have a look at :ref:`mta-sts <mta-sts>`.
+When mta-sts is enabled, modern email servers will immediately use TLS for delivering emails to Mailu.
+
 Mailu 1.9 - 2021-12-29
 ----------------------
 
@@ -20,18 +510,18 @@ A fair amount of work went in this release; In no particular order:
 - outbound SMTP connections from Mailu are now enjoying some protection against active attackers thanks to DANE and MTA-STS support. Specific policies can be configured for specific destinations thanks to ``tls_policy_maps`` and configuring your system to publish a policy has been documented in the FAQ.
 - outbound emails can now be rate-limited (to mitigate SPAM in case an account is taken over)
 - long term storage of passwords has been rethought to enable stronger protection against offline attackers (switch to iterated and salted SHA+bcrypt) while enabling much better performance (credential cache). Please encourage your users to use tokens where appropriate and keep in mind that existing hashes will be converted on first use to the new format.
-- session handling has been reworked from the grounds up: they have been switched from client side (cookies) to server-side, unified (SSO, expiry, lifetime) accross all web-facing applications and some mitigations against session fixation have been implemented.
-- rate limiting has seen many improvements: It is now deployed on **all** entry points (SMTP/IMAP/POP3/WEB/WEBMAIL) and configured to defeat both password bruteforces (thanks to a limit against total number of failed attempts against an account over a period) and password spraying (thanks to a limit for each client on the total number of non-existing accounts that can be queried). Exemption mechanisms have been put in place (device tokens, dynamic IP whitelists) to ensure that genuine clients and users won't be affected by default and the default configuration thought to fit most usecases.
-- if you use letsencrypt, Mailu is now configured to offer both RSA and ECC certificates to clients; It will OSCP stapple its replies where appropriate
+- session handling has been reworked from the grounds up: they have been switched from client side (cookies) to server-side, unified (SSO, expiry, lifetime) across all web-facing applications and some mitigations against session fixation have been implemented.
+- rate limiting has seen many improvements: It is now deployed on all entry points (SMTP/IMAP/POP3/WEB/WEBMAIL) and configured to defeat both password bruteforces (thanks to a limit against total number of failed attempts against an account over a period) and password spraying (thanks to a limit for each client on the total number of non-existing accounts that can be queried). Exemption mechanisms have been put in place (device tokens, dynamic IP whitelists) to ensure that genuine clients and users won't be affected by default and the default configuration thought to fit most use-cases.
+- if you use letsencrypt, Mailu is now configured to offer both RSA and ECC certificates to clients; It will OSCP staple its replies where appropriate
 
 
 Updated Admin interface
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-The Web Administration interface makes use of AdminLTE. The AdminLTE2 technology has been upgraded to AdminLTE3. This cost a lot of effort due to the changes between AdminLTE2 and AdminLTE3. 
+The Web Administration interface makes use of AdminLTE. The AdminLTE2 technology has been upgraded to AdminLTE3. This cost a lot of effort due to the changes between AdminLTE2 and AdminLTE3.
 As a result the webpage looks more modern. All tables now have a filter and columns that can be sorted. If you have many users or domains, this will be a very welcome new feature!
 
-A language selector has been added. On the login page and in the Web Admin Interface, the language selector can be accessed in the top right. 
+A language selector has been added. On the login page and in the Web Admin Interface, the language selector can be accessed in the top right.
 
 
 Import/Export command on steroids
@@ -41,7 +531,7 @@ The Mailu command line has been enhanced with the new config-export and config-i
 **Everything** that can be configured in the Mailu Web Administration Interface can now be exported and imported via yaml files.
 So via YAML files, you can now bulk configure a complete new installation, without the need to access the Mailu Web Administration Interface.
 
-It is also possible to create new users or import new users (with password hashes) using the config-import. 
+It is also possible to create new users or import new users (with password hashes) using the config-import.
 
 With this new command it is very easy to switch to a different database management system for the Mailu database. Simply dump your configuration to yaml file.
 After setting up your new Mailu system with the different DBMS, you can import the yaml file with all Mailu configuration.
@@ -76,13 +566,13 @@ The images now also contain the release it was built for.
 
 On the github project we will automatically create releases for each X.Y.Z release. Via this release you can check what commit hash the tag is assigned to.
 
-With this improvement in our CI/CD workflow, it is possible to be notified when an update is released via github releases. It is also possible to use pinned versions to update in a controlled manner. 
+With this improvement in our CI/CD workflow, it is possible to be notified when an update is released via github releases. It is also possible to use pinned versions to update in a controlled manner.
 
 
 New Functionality & Improvements
 ````````````````````````````````
 
-For a list of all the changes (including bug fixes) refer to `CHANGELOG.md` in the root folder of the Mailu github project. 
+For a list of all the changes (including bug fixes) refer to `CHANGELOG.md` in the root folder of the Mailu github project.
 
 A short summary of the new features:
 
@@ -99,20 +589,20 @@ A short summary of the new features:
 - Domain details page is enhanced with DNS client auto-configuration (RFC6186) entries.
 - Centralize the authentication of webmails behind the admin interface.
 
-   - The new single sign on page opens up the possiblity to introduce 2 factor authentication in the future.
+   - The new single sign on page opens up the possibility to introduce 2 factor authentication in the future.
 
 - Add sending quotas per user (configured in mailu.env). This determines how many emails each user can send every day.
 - Allow specific users to send emails from any address using the WILDCARD_SENDERS setting (mailu.env.).
 - Use semantic versioning for building releases.
-- Internal improviments to improve performance of authentication requests.
-- Introduded a language selector for the Admin interface.
+- Internal improvements to improve performance of authentication requests.
+- Introduced a language selector for the Admin interface.
 - Add cli commands config-import and config-export for importing/exporting Mailu config via YAML.
 - Enable support of all hash types passlib supports.
 - Switch to bcrypt_sha256 (stronger hashing of passwords in Mailu database)/
 - Introduce MTA-STS and DANE validation.
 - Added Hebrew translation.
 - Log authentication attempts on the admin portal. Fail2ban can now be used to monitor login attempts on Admin/Webmail.
-- Remove Mailu PostgreSQL. 
+- Remove Mailu PostgreSQL.
 - Admin/Webmail sessions expire now. This can be tweakers via mailu.env.
 
 
@@ -127,7 +617,7 @@ For more information see the :ref:`configuration reference <reverse_proxy_header
 
 If you use Fail2Ban, you configure Fail2Ban to monitor failed logon attempts for the web-facing frontend (Admin/Webmail). See the :ref:`updated Fail2Ban documentation <Fail2Ban>` for more information.
 
-Please note that the shipped image for the PostgreSQL database is fully deprecated now. 
+Please note that the shipped image for the PostgreSQL database is fully deprecated now.
 To migrate to the official PostgreSQL image, you can follow our :ref:`migration guide <migrate_mailu_postgresql>`.
 
 
@@ -136,7 +626,7 @@ Mailu 1.8 - 2021-08-7
 
 The full 1.8 release is finally ready. There have been some changes in the contributors team. Many people from the contributors team have stepped back due to changed priorities in their life.
 We are very grateful for all their contributions and hope we will see them back again in the future.
-This is the main reason why it took so long for 1.8 to be fully released. 
+This is the main reason why it took so long for 1.8 to be fully released.
 
 Fortunately more people have decided to join the project. Some very nice contributions have been made which will become part of the next 1.9 release.
 We hope that future Mailu releases will be released more quickly now we have more active contributors again.
@@ -184,8 +674,8 @@ Override files are now mounted read-only into the containers. The Dovecot and Po
 Recreate SECRET_KEY after upgrading
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Improvements have been made to protect again session-fixation attacks. 
-To be fully protected, it is required to change your SECRET_KEY in Mailu.env after upgrading. 
+Improvements have been made to protect again session-fixation attacks.
+To be fully protected, it is required to change your SECRET_KEY in Mailu.env after upgrading.
 A new SECRET_KEY is generated when you recreate your docker-compose.yml & mailu.env file via setup.mailu.io.
 
 The SECRET_KEY is an uppercase alphanumeric string of length 16. You can manually create such a string via
@@ -274,7 +764,7 @@ Other changes include software updates with some new features in Rainloop
 Back-end
 ````````
 
-One of the big tasks was upgradig to latest Alpine (3.10), which is now finished.
+One of the big tasks was upgrading to latest Alpine (3.10), which is now finished.
 Also, a lot was improved about the environment variables meant to provide
 specific hosts in custom setups.
 
@@ -382,9 +872,9 @@ For this upgrade it is necessary to bring the project down and up, due to networ
 
 .. code-block:: bash
 
-  docker-compose pull
-  docker-compose down --remove-orphans
-  docker-compose up -d
+  docker compose pull
+  docker compose down --remove-orphans
+  docker compose up -d
 
 After everything runs successfully, ``/mailu/certs/dhparam.pem`` is no longer needed and can be deleted.
 It's included in the Mailu distribution by default now. Also the old ``.env`` can be deleted.
@@ -434,15 +924,15 @@ and bug fixes.
 
 **If you are upgrading**, please go through the setup guide and download the
 latest ``docker-compose.yml`` and ``.env``, then update them with your
-sepcific settings, because more than 50% of these templates was rewritten.
+specific settings, because more than 50% of these templates was rewritten.
 You should then be able to pull and start your new e-mail stack with
 no issue, simply remove orphaned container, since some were renamed and others
 were removed (e.g. rmilter):
 
 .. code-block:: bash
 
-  docker-compose pull
-  docker-compose up -d --remove-orphans
+  docker compose pull
+  docker compose up -d --remove-orphans
 
 If you experience problems when upgrading, feel free to post issues and contact
 us on our chat channel for emergency support.
@@ -522,7 +1012,7 @@ When creating an alias, one may now enable the "SQL LIKE" syntax then use
 standard SQL wildcards ``%`` and ``_`` to specify matches for a given alias.
 For instance :
 
-- ``%@domain.tld`` will match any uncatched email sent to that domain (catch-all)
+- ``%@domain.tld`` will match any uncaught email sent to that domain (catch-all)
 - ``support-%@domain.tld`` will match any email sent to an address starting with
   ``support-``
 - ``_@domain.tld`` will match any email sent to a one-character address
