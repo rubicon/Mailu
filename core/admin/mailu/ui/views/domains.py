@@ -1,4 +1,4 @@
-from mailu import models
+from mailu import models, utils
 from mailu.ui import ui, forms, access
 from flask import current_app as app
 
@@ -70,6 +70,26 @@ def domain_details(domain_name):
     domain = models.Domain.query.get(domain_name) or flask.abort(404)
     return flask.render_template('domain/details.html', domain=domain)
 
+@ui.route('/domain/details/<domain_name>/zonefile', methods=['GET'])
+@access.domain_admin(models.Domain, 'domain_name')
+def domain_download_zonefile(domain_name):
+    domain = models.Domain.query.get(domain_name) or flask.abort(404)
+    res = [domain.dns_mx, domain.dns_spf]
+    if domain.dkim_publickey:
+        record = domain.dns_dkim.split('"', 1)[0].strip()
+        txt = f'v=DKIM1; k=rsa; p={domain.dkim_publickey}'
+        txt = ' '.join(f'"{txt[p:p+250]}"' for p in range(0, len(txt), 250))
+        res.append(f'{record} {txt}')
+        res.append(domain.dns_dmarc)
+    res.extend(domain.dns_tlsa)
+    res.extend(domain.dns_autoconfig)
+    res.append("")
+    return flask.Response(
+        "\n".join(res),
+        content_type="text/plain",
+        headers={"Content-disposition": f"attachment; filename={domain.name}-zonefile.txt"}
+    )
+
 
 @ui.route('/domain/genkeys/<domain_name>', methods=['GET', 'POST'])
 @access.domain_admin(models.Domain, 'domain_name')
@@ -93,6 +113,9 @@ def domain_signup(domain_name=None):
         del form.pw
         del form.pw2
     if form.validate_on_submit():
+        if msg := utils.isBadOrPwned(form):
+            flask.flash(msg, "error")
+            return flask.render_template('domain/signup.html', form=form)
         conflicting_domain = models.Domain.query.get(form.name.data)
         conflicting_alternative = models.Alternative.query.get(form.name.data)
         conflicting_relay = models.Relay.query.get(form.name.data)

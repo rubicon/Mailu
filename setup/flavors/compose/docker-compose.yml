@@ -3,8 +3,6 @@
 # Please read the documentation before attempting any change.
 # Generated for {{ flavor }} flavor
 
-version: '2.2'
-
 services:
 
   # External dependencies
@@ -22,20 +20,30 @@ services:
 
   # Core services
   front:
-    image: ${DOCKER_ORG:-mailu}/${DOCKER_PREFIX:-}nginx:${MAILU_VERSION:-{{ version }}}
+    image: ${DOCKER_ORG:-ghcr.io/mailu}/${DOCKER_PREFIX:-}nginx:${MAILU_VERSION:-{{ version }}}
     restart: always
     env_file: {{ env }}
     logging:
-      driver: {{ log_driver or 'json-file' }}
+      driver: journald
+      options:
+        tag: mailu-front
     ports:
-    {% for port in (80, 443, 25, 465, 587, 110, 995, 143, 993) %}
+    {% for port in (80, 443, 25, 465, 587, 110, 995, 143, 993, 4190) %}
     {% if bind4 %}
       - "{{ bind4 }}:{{ port }}:{{ port }}"
     {% endif %}
     {% if ipv6_enabled and bind6 %}
-      - "{{ bind6 }}:{{ port }}:{{ port }}"
+      - "[{{ bind6 }}]:{{ port }}:{{ port }}"
     {% endif %}
     {% endfor %}
+    networks:
+      - default
+{% if webmail_type != 'none' %}
+      - webmail
+{% endif %}
+{% if webdav_enabled %}
+      - radicale
+{% endif %}
     volumes:
       - "{{ root }}/certs:/certs"
       - "{{ root }}/overrides/nginx:/overrides:ro"
@@ -46,8 +54,12 @@ services:
       - {{ dns }}
 
   resolver:
-    image: ${DOCKER_ORG:-mailu}/${DOCKER_PREFIX:-}unbound:${MAILU_VERSION:-{{ version }}}
+    image: ${DOCKER_ORG:-ghcr.io/mailu}/${DOCKER_PREFIX:-}unbound:${MAILU_VERSION:-{{ version }}}
     env_file: {{ env }}
+    logging:
+      driver: journald
+      options:
+        tag: mailu-resolver
     restart: always
     networks:
       default:
@@ -55,9 +67,13 @@ services:
     {% endif %}
 
   admin:
-    image: ${DOCKER_ORG:-mailu}/${DOCKER_PREFIX:-}admin:${MAILU_VERSION:-{{ version }}}
+    image: ${DOCKER_ORG:-ghcr.io/mailu}/${DOCKER_PREFIX:-}admin:${MAILU_VERSION:-{{ version }}}
     restart: always
     env_file: {{ env }}
+    logging:
+      driver: journald
+      options:
+        tag: mailu-admin
     {% if not admin_enabled %}
     ports:
       - 127.0.0.1:8080:80
@@ -74,14 +90,26 @@ services:
     {% endif %}
 
   imap:
-    image: ${DOCKER_ORG:-mailu}/${DOCKER_PREFIX:-}dovecot:${MAILU_VERSION:-{{ version }}}
+    image: ${DOCKER_ORG:-ghcr.io/mailu}/${DOCKER_PREFIX:-}dovecot:${MAILU_VERSION:-{{ version }}}
     restart: always
     env_file: {{ env }}
+    logging:
+      driver: journald
+      options:
+        tag: mailu-imap
     volumes:
       - "{{ root }}/mail:/mail"
       - "{{ root }}/overrides/dovecot:/overrides:ro"
+    networks:
+      - default
+    {% if tika_enabled %}
+      - fts_attachments
+    {% endif %}
     depends_on:
       - front
+    {% if tika_enabled %}
+      - fts_attachments
+    {% endif %}
     {% if resolver_enabled %}
       - resolver
     dns:
@@ -89,9 +117,13 @@ services:
     {% endif %}
 
   smtp:
-    image: ${DOCKER_ORG:-mailu}/${DOCKER_PREFIX:-}postfix:${MAILU_VERSION:-{{ version }}}
+    image: ${DOCKER_ORG:-ghcr.io/mailu}/${DOCKER_PREFIX:-}postfix:${MAILU_VERSION:-{{ version }}}
     restart: always
     env_file: {{ env }}
+    logging:
+      driver: journald
+      options:
+        tag: mailu-smtp
     volumes:
       - "{{ root }}/mailqueue:/queue"
       - "{{ root }}/overrides/postfix:/overrides:ro"
@@ -103,16 +135,79 @@ services:
       - {{ dns }}
     {% endif %}
 
+{% if oletools_enabled %}
+  oletools:
+    image: ${DOCKER_ORG:-ghcr.io/mailu}/${DOCKER_PREFIX:-}oletools:${MAILU_VERSION:-{{ version }}}
+    hostname: oletools
+    logging:
+      driver: journald
+      options:
+        tag: mailu-oletools
+    restart: always
+    networks:
+      - oletools
+    depends_on:
+    {% if resolver_enabled %}
+      - resolver
+    dns:
+      - {{ dns }}
+    {% endif %}
+{% endif %}
+
+{% if tika_enabled %}
+  fts_attachments:
+    image: apache/tika:2.9.2.1-full
+    hostname: tika
+    logging:
+      driver: journald
+      options:
+        tag: mailu-tika
+    restart: always
+    networks:
+      - fts_attachments
+    depends_on:
+    {% if resolver_enabled %}
+      - resolver
+    dns:
+      - {{ dns }}
+    {% endif %}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -nv -t1 -O /dev/null http://127.0.0.1:9998/tika || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+{% endif %}
+
   antispam:
-    image: ${DOCKER_ORG:-mailu}/${DOCKER_PREFIX:-}rspamd:${MAILU_VERSION:-{{ version }}}
+    image: ${DOCKER_ORG:-ghcr.io/mailu}/${DOCKER_PREFIX:-}rspamd:${MAILU_VERSION:-{{ version }}}
     hostname: antispam
     restart: always
     env_file: {{ env }}
+    logging:
+      driver: journald
+      options:
+        tag: mailu-antispam
+    networks:
+      - default
+{% if oletools_enabled %}
+      - oletools
+{% endif %}
+{% if antivirus_enabled %}
+      - clamav
+{% endif %}
     volumes:
       - "{{ root }}/filter:/var/lib/rspamd"
-      - "{{ root }}/overrides/rspamd:/etc/rspamd/override.d:ro"
+      - "{{ root }}/overrides/rspamd:/overrides:ro"
     depends_on:
       - front
+      - redis
+    {% if oletools_enabled %}
+      - oletools
+    {% endif %}
+    {% if antivirus_enabled %}
+      - antivirus
+    {% endif %}
     {% if resolver_enabled %}
       - resolver
     dns:
@@ -122,43 +217,54 @@ services:
   # Optional services
   {% if antivirus_enabled %}
   antivirus:
-    image: ${DOCKER_ORG:-mailu}/${DOCKER_PREFIX:-}clamav:${MAILU_VERSION:-{{ version }}}
+    image: clamav/clamav-debian:1.4
     restart: always
-    env_file: {{ env }}
+    logging:
+      driver: journald
+      options:
+        tag: mailu-antivirus
+    networks:
+      - clamav
     volumes:
-      - "{{ root }}/filter:/data"
-    {% if resolver_enabled %}
-    depends_on:
-      - resolver
-    dns:
-      - {{ dns }}
-    {% endif %}
+      - "{{ root }}/clamav:/var/lib/clamav"
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 `cat /tmp/clamd.pid` && kill -0 `cat /tmp/freshclam.pid`"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
   {% endif %}
 
   {% if webdav_enabled %}
   webdav:
-    image: ${DOCKER_ORG:-mailu}/${DOCKER_PREFIX:-}radicale:${MAILU_VERSION:-{{ version }}}
+    image: ${DOCKER_ORG:-ghcr.io/mailu}/${DOCKER_PREFIX:-}radicale:${MAILU_VERSION:-{{ version }}}
     restart: always
-    env_file: {{ env }}
+    logging:
+      driver: journald
+      options:
+        tag: mailu-webdav
     volumes:
       - "{{ root }}/dav:/data"
-    {% if resolver_enabled %}
-    depends_on:
-      - resolver
-    dns:
-      - {{ dns }}
-    {% endif %}
+    networks:
+      - radicale
   {% endif %}
 
   {% if fetchmail_enabled %}
   fetchmail:
-    image: ${DOCKER_ORG:-mailu}/${DOCKER_PREFIX:-}fetchmail:${MAILU_VERSION:-{{ version }}}
+    image: ${DOCKER_ORG:-ghcr.io/mailu}/${DOCKER_PREFIX:-}fetchmail:${MAILU_VERSION:-{{ version }}}
     restart: always
     env_file: {{ env }}
+    logging:
+      driver: journald
+      options:
+        tag: mailu-fetchmail
     volumes:
       - "{{ root }}/data/fetchmail:/data"
-    {% if resolver_enabled %}
     depends_on:
+      - admin
+      - smtp
+      - imap
+    {% if resolver_enabled %}
       - resolver
     dns:
       - {{ dns }}
@@ -168,19 +274,20 @@ services:
   # Webmail
   {% if webmail_type != 'none' %}
   webmail:
-    image: ${DOCKER_ORG:-mailu}/${DOCKER_PREFIX:-}{{ webmail_type }}:${MAILU_VERSION:-{{ version }}}
+    image: ${DOCKER_ORG:-ghcr.io/mailu}/${DOCKER_PREFIX:-}webmail:${MAILU_VERSION:-{{ version }}}
     restart: always
     env_file: {{ env }}
+    logging:
+      driver: journald
+      options:
+        tag: mailu-webmail
     volumes:
       - "{{ root }}/webmail:/data"
       - "{{ root }}/overrides/{{ webmail_type }}:/overrides:ro"
+    networks:
+      - webmail
     depends_on:
-      - imap
-    {% if resolver_enabled %}
-      - resolver
-    dns:
-      - {{ dns }}
-    {% endif %}
+      - front
   {% endif %}
 
 networks:
@@ -196,3 +303,25 @@ networks:
         {% if ipv6_enabled %}
         - subnet: {{ subnet6 }}
         {% endif %}
+{% if webdav_enabled %}
+  radicale:
+    driver: bridge
+{% endif %}
+{% if webmail_type != 'none' %}
+  webmail:
+    driver: bridge
+{% endif %}
+{% if antivirus_enabled %}
+  clamav:
+    driver: bridge
+{% endif %}
+{% if oletools_enabled %}
+  oletools:
+    driver: bridge
+    internal: true
+{% endif %}
+{% if tika_enabled %}
+  fts_attachments:
+    driver: bridge
+    internal: true
+{% endif %}

@@ -1,0 +1,53 @@
+{
+    "name": "*",
+    "IMAP": {
+        "host": "{{ FRONT_ADDRESS }}",
+        "port": 10143,
+        "secure": 3,
+        "shortLogin": false,
+        "ssl": {
+            "verify_peer": false,
+            "verify_peer_name": false,
+            "allow_self_signed": false,
+            "SNI_enabled": true,
+            "disable_compression": true,
+            "security_level": 1
+        },
+	{% if (FULL_TEXT_SEARCH or '').lower() not in ['off', 'false', '0'] %}
+        "fast_simple_search": "false"
+	{% endif %}
+    },
+    "SMTP": {
+        "host": "{{ FRONT_ADDRESS }}",
+        "port": 10025,
+        "secure": 3,
+        "shortLogin": false,
+        "ssl": {
+            "verify_peer": false,
+            "verify_peer_name": false,
+            "allow_self_signed": false,
+            "SNI_enabled": true,
+            "disable_compression": true,
+            "security_level": 1
+        },
+        "useAuth": true,
+        "setSender": false,
+        "usePhpMail": false
+    },
+    "Sieve": {
+        "host": "{{ FRONT_ADDRESS }}",
+        "port": 14190,
+        "type": 3,
+        "shortLogin": false,
+        "ssl": {
+            "verify_peer": false,
+            "verify_peer_name": false,
+            "allow_self_signed": true,
+            "SNI_enabled": true,
+            "disable_compression": true,
+            "security_level": 1
+        },
+        "enabled": true
+    },
+    "whiteList": ""
+}

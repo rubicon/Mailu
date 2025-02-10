@@ -31,18 +31,14 @@ Sets the ``TLS_FLAVOR`` to one of the following
 values:
 
 - ``cert`` is the default and requires certificates to be setup manually;
-- ``letsencrypt`` will use the *Letsencrypt!* CA to generate automatic certificates;
-- ``mail`` is similar to ``cert`` except that TLS will only be served for
-  emails (IMAP and SMTP), not HTTP (use it behind reverse proxies);
-- ``mail-letsencrypt`` is similar to ``letsencrypt`` except that TLS will only be served for
-  emails (IMAP and SMTP), not HTTP (use it behind reverse proxies);
+- ``letsencrypt`` will use the *Letsencrypt!* CA to obtain certificates automatically;
 - ``notls`` will disable TLS, this is not recommended except for testing.
 
 .. note::
 
   When using *Letsencrypt!* you have to make sure that the DNS ``A`` and ``AAAA`` records for the
-  all hostnames mentioned in the ``HOSTNAMES`` variable match with the ip adresses of you server.
-  Or else certificate generation will fail! See also: :ref:`dns_setup`.
+  all hostnames mentioned in the ``HOSTNAMES`` variable match with the ip addresses of you server
+  or else certificate generation will fail! See also: :ref:`dns_setup`.
 
 Bind address
 ````````````
@@ -65,7 +61,8 @@ You can find those addresses by running the following:
           TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
 
 If the address is not configured directly (NAT) on any of the network interfaces or if
-you would simply like the server to listen on all interfaces, use ``0.0.0.0`` and ``::``. Note that running in this mode is not supported and can lead to `issues`_.
+you would simply like the server to listen on all interfaces, use ``0.0.0.0`` and ``::``. 
+Note that running in this mode is not supported and can lead to `issues`_.
 
 .. _issues: https://github.com/Mailu/Mailu/issues/641
 
@@ -75,13 +72,22 @@ Review configuration variables
 After downloading the files, open ``mailu.env`` and review the variable settings.
 Make sure to read the comments in the file and instructions from the :ref:`common_cfg` page.
 
+If your CPU supports Advanced Vector Extensions (AVX2 on x86_64, lrcpc on ARM64), you should
+consider enabling hardened-malloc earlier in the boot process by adding the following to
+your mailu.env:
+
+.. code-block:: bash
+
+    LD_PRELOAD=/usr/lib/libhardened_malloc.so
+
+
 Finish setting up TLS
 ---------------------
 
 Mailu relies heavily on TLS and must have a key pair and a certificate
 available, at least for the hostname configured in the ``mailu.env`` file.
 
-If you set ``TLS_FLAVOR`` to ``cert`` or ``mail`` then you must create a ``certs`` directory
+If you set ``TLS_FLAVOR`` to ``cert`` then you must create a ``certs`` directory
 in your root path and setup a key-certificate pair there:
 
 - ``cert.pem`` contains the certificate (override with ``TLS_CERT_FILENAME``),
@@ -94,7 +100,7 @@ You may now start Mailu. Move the to the Mailu directory and run:
 
 .. code-block:: bash
 
-  docker-compose up -d
+  docker compose up -d
 
 Finally, you need an admin user account. 
 
@@ -105,8 +111,9 @@ Else, if you don't go with the automatic way, you need to manually create the ad
 
 .. code-block:: bash
 
-  docker-compose exec admin flask mailu admin me example.net 'password'
+  docker compose exec admin flask mailu admin me example.net 'password'
 
-This will create a user named ``me@example.net`` with password ``password`` and administration privileges. Connect to the Web admin interface and change the password to a strong one.
+This will create a user named ``me@example.net`` with password ``password`` and administration privileges.
+Connect to the Web admin interface and change the password to a strong one.
 
   .. note:: It is vitally important that either a user with the same email as ``POSTMASTER`` in your ``mailu.env`` exists, or you remember to create an alias with this name after you log in. All kinds of strange errors will occur as a result of not doing so!

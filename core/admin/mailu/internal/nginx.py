@@ -1,12 +1,10 @@
 from mailu import models, utils
 from flask import current_app as app
+from socrate import system
 
-import re
 import urllib
 import ipaddress
-import socket
 import sqlalchemy.exc
-import tenacity
 
 SUPPORTED_AUTH_METHODS = ["none", "plain"]
 
@@ -15,47 +13,69 @@ STATUSES = {
     "authentication": ("Authentication credentials invalid", {
         "imap": "AUTHENTICATIONFAILED",
         "smtp": "535 5.7.8",
-        "pop3": "-ERR Authentication failed"
+        "submission": "535 5.7.8",
+        "lmtp": "535 5.7.8",
+        "pop3": "-ERR Authentication failed",
+        "sieve": "AuthFailed"
     }),
     "encryption": ("Must issue a STARTTLS command first", {
-        "smtp": "530 5.7.0"
+        "imap": "PRIVACYREQUIRED",
+        "smtp": "530 5.7.0",
+        "submission": "530 5.7.0",
+        "lmtp": "530 5.7.0",
+        "pop3": "-ERR Authentication canceled.",
+        "sieve": "ENCRYPT-NEEDED"
     }),
     "ratelimit": ("Temporary authentication failure (rate-limit)", {
         "imap": "LIMIT",
         "smtp": "451 4.3.2",
-        "pop3": "-ERR [LOGIN-DELAY] Retry later"
+        "submission": "451 4.3.2",
+        "lmtp": "451 4.3.2",
+        "pop3": "-ERR [LOGIN-DELAY] Retry later",
+        "sieve": "AuthFailed"
     }),
 }
 
-def check_credentials(user, password, ip, protocol=None, auth_port=None):
-    if not user or not user.enabled or (protocol == "imap" and not user.enable_imap) or (protocol == "pop3" and not user.enable_pop):
+WEBMAIL_PORTS = ['14190', '10143', '10025']
+
+def check_credentials(user, password, ip, protocol=None, auth_port=None, source_port=None, raw_user=None):
+    if not user or not user.enabled or (protocol == "imap" and not user.enable_imap and not auth_port in WEBMAIL_PORTS) or (protocol == "pop3" and not user.enable_pop):
+        app.logger.info(f'Login attempt for: {user or raw_user!r}/{protocol}/{auth_port} from: {ip}/{source_port}: failed: account disabled')
         return False
-    is_ok = False
     # webmails
-    if auth_port in ['10143', '10025'] and password.startswith('token-'):
+    if auth_port in WEBMAIL_PORTS and password.startswith('token-'):
         if utils.verify_temp_token(user.get_id(), password):
-            is_ok = True
-    # All tokens are 32 characters hex lowercase
-    if not is_ok and len(password) == 32:
+            app.logger.debug(f'Login attempt for: {user}/{protocol}/{auth_port} from: {ip}/{source_port}: success: webmail-token')
+            return True
+    if utils.is_app_token(password):
         for token in user.tokens:
-            if (token.check_password(password) and
-                (not token.ip or token.ip == ip)):
-                    is_ok = True
-                    break
-    if not is_ok and user.check_password(password):
-        is_ok = True
-    return is_ok
+            if token.check_password(password):
+                if not token.ip or utils.is_ip_in_subnet(ip, token.ip):
+                    app.logger.info(f'Login attempt for: {user}/{protocol}/{auth_port} from: {ip}/{source_port}: success: token-{token.id}: {token.comment or ""!r}')
+                    return True
+                else:
+                    app.logger.info(f'Login attempt for: {user}/{protocol}/{auth_port} from: {ip}/{source_port}: failed: badip: token-{token.id}: {token.comment or ""!r}')
+                    return False # we can return directly here since the token is valid
+    if user.check_password(password):
+        if app.config['AUTH_REQUIRE_TOKENS'] and not protocol in ['web', 'sso']:
+            app.logger.info(f'Login attempt for: {user}/{protocol}/{auth_port} from: {ip}/{source_port}: failed: password ok, but a token is required')
+            return False
+        else:
+            app.logger.info(f'Login attempt for: {user}/{protocol}/{auth_port} from: {ip}/{source_port}: success: password')
+            return True
+    app.logger.info(f'Login attempt for: {user}/{protocol}/{auth_port} from: {ip}/{source_port}: failed: badauth: {utils.truncated_pw_hash(password)}')
+    return False
 
 def handle_authentication(headers):
     """ Handle an HTTP nginx authentication request
     See: http://nginx.org/en/docs/mail/ngx_mail_auth_http_module.html#protocol
     """
-    method = headers["Auth-Method"]
-    protocol = headers["Auth-Protocol"]
+    method = headers["Auth-Method"].lower()
+    protocol = headers["Auth-Protocol"].lower()
     # Incoming mail, no authentication
-    if method == "none" and protocol == "smtp":
+    if method in ['', 'none'] and protocol in ['smtp', 'lmtp']:
         server, port = get_server(protocol, False)
-        if app.config["INBOUND_TLS_ENFORCE"]:
+        if app.config["INBOUND_TLS_ENFORCE"] and protocol == 'smtp':
             if "Auth-SSL" in headers and headers["Auth-SSL"] == "on":
                 return {
                     "Auth-Status": "OK",
@@ -76,21 +96,16 @@ def handle_authentication(headers):
                 "Auth-Port": port
             }
     # Authenticated user
-    elif method == "plain":
+    elif method in ['plain', 'login']:
         is_valid_user = False
-        # According to RFC2616 section 3.7.1 and PEP 3333, HTTP headers should
-        # be ASCII and are generally considered ISO8859-1. However when passing
-        # the password, nginx does not transcode the input UTF string, thus
-        # we need to manually decode.
-        raw_user_email = urllib.parse.unquote(headers["Auth-User"])
-        raw_password = urllib.parse.unquote(headers["Auth-Pass"])
         user_email = 'invalid'
+        password = 'invalid'
         try:
-            user_email = raw_user_email.encode("iso8859-1").decode("utf8")
-            password = raw_password.encode("iso8859-1").decode("utf8")
+            user_email = urllib.parse.unquote(headers["Auth-User"])
+            password = urllib.parse.unquote(headers["Auth-Pass"])
             ip = urllib.parse.unquote(headers["Client-Ip"])
         except:
-            app.logger.warn(f'Received undecodable user/password from nginx: {raw_user_email!r}/{raw_password!r}')
+            app.logger.warn(f'Received undecodable user/password from front: {headers.get("Auth-User", "")!r}')
         else:
             try:
                 user = models.User.query.get(user_email) if '@' in user_email else None
@@ -100,7 +115,7 @@ def handle_authentication(headers):
             else:
                 is_valid_user = user is not None
                 ip = urllib.parse.unquote(headers["Client-Ip"])
-                if check_credentials(user, password, ip, protocol, headers["Auth-Port"]):
+                if check_credentials(user, password, ip, protocol, headers["Auth-Port"], headers['Client-Port'], user_email):
                     server, port = get_server(headers["Auth-Protocol"], True)
                     return {
                         "Auth-Status": "OK",
@@ -118,7 +133,7 @@ def handle_authentication(headers):
             "Auth-Wait": 0
         }
     # Unexpected
-    return {}
+    raise Exception(f"SHOULD NOT HAPPEN {protocol} {method}")
 
 
 def get_status(protocol, status):
@@ -127,32 +142,26 @@ def get_status(protocol, status):
     status, codes = STATUSES[status]
     return status, codes[protocol]
 
-def extract_host_port(host_and_port, default_port):
-    host, _, port = re.match('^(.*?)(:([0-9]*))?$', host_and_port).groups()
-    return host, int(port) if port else default_port
-
 def get_server(protocol, authenticated=False):
-    if protocol == "imap":
-        hostname, port = extract_host_port(app.config['IMAP_ADDRESS'], 143)
-    elif protocol == "pop3":
-        hostname, port = extract_host_port(app.config['POP3_ADDRESS'], 110)
-    elif protocol == "smtp":
+    if protocol == 'imap':
+        hostname, port = app.config['IMAP_ADDRESS'], 143
+    elif protocol == 'pop3':
+        hostname, port = app.config['IMAP_ADDRESS'], 110
+    elif protocol == 'smtp':
         if authenticated:
-            hostname, port = extract_host_port(app.config['AUTHSMTP_ADDRESS'], 10025)
+            hostname, port = app.config['SMTP_ADDRESS'], 10025
         else:
-            hostname, port = extract_host_port(app.config['SMTP_ADDRESS'], 25)
+            hostname, port = app.config['SMTP_ADDRESS'], 25
+    elif protocol == 'submission':
+        hostname, port = app.config['SMTP_ADDRESS'], 10025
+    elif protocol == 'lmtp':
+        hostname, port = app.config['IMAP_ADDRESS'], 2525
+    elif protocol == 'sieve':
+        hostname, port = app.config['IMAP_ADDRESS'], 4190
     try:
-        # test if hostname is already resolved to an ip adddress
+        # test if hostname is already resolved to an ip address
         ipaddress.ip_address(hostname)
     except:
         # hostname is not an ip address - so we need to resolve it
-        hostname = resolve_hostname(hostname)
+        hostname = system.resolve_hostname(hostname)
     return hostname, port
-
-@tenacity.retry(stop=tenacity.stop_after_attempt(100),
-                wait=tenacity.wait_random(min=2, max=5))
-def resolve_hostname(hostname):
-    """ This function uses system DNS to resolve a hostname.
-    It is capable of retrying in case the host is not immediately available
-    """
-    return socket.gethostbyname(hostname)

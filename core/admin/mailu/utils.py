@@ -15,6 +15,7 @@ import dns.rdataclass
 
 import hmac
 import secrets
+import string
 import time
 
 from multiprocessing import Value
@@ -42,7 +43,7 @@ login.login_view = "sso.login"
 def handle_needs_login():
     """ redirect unauthorized requests to login page """
     return flask.redirect(
-        flask.url_for('sso.login')
+        flask.url_for('sso.login', url=flask.request.url)
     )
 
 # DNS stub configured to do DNSSEC enabled queries
@@ -86,10 +87,19 @@ def is_exempt_from_ratelimits(ip):
     ip = ipaddress.ip_address(ip)
     return any(ip in cidr for cidr in app.config['AUTH_RATELIMIT_EXEMPTION'])
 
+def is_ip_in_subnet(ip, subnets=[]):
+    if isinstance(subnets, str):
+        subnets = [subnets]
+    ip = ipaddress.ip_address(ip)
+    try:
+        return any(ip in cidr for cidr in [ipaddress.ip_network(subnet, strict=False) for subnet in subnets])
+    except:
+        app.logger.debug(f'Unable to parse {subnets!r}, assuming {ip!r} is not in the set')
+        return False
+
 # Application translation
 babel = flask_babel.Babel()
 
-@babel.localeselector
 def get_locale():
     """ selects locale for translation """
     if not app.config['SESSION_COOKIE_NAME'] in flask.request.cookies:
@@ -299,7 +309,7 @@ class MailuSessionConfig:
     # default size of session key parts
     uid_bits = 64 # default if SESSION_KEY_BITS is not set in config
     sid_bits = 128 # for now. must be multiple of 8!
-    time_bits = 32 # for now. must be multiple of 8!  
+    time_bits = 32 # for now. must be multiple of 8!
 
     def __init__(self, app=None):
 
@@ -389,7 +399,7 @@ class MailuSessionInterface(SessionInterface):
             if session.modified:
                 session.delete()
                 response.delete_cookie(
-                    app.session_cookie_name,
+                    app.config['SESSION_COOKIE_NAME'],
                     domain=self.get_cookie_domain(app),
                     path=self.get_cookie_path(app),
                 )
@@ -402,8 +412,8 @@ class MailuSessionInterface(SessionInterface):
         # save session and update cookie if necessary
         if session.save():
             response.set_cookie(
-                app.session_cookie_name,
-                session.sid,
+                app.config['SESSION_COOKIE_NAME'],
+                session.sid.decode('ascii'),
                 expires=datetime.now()+timedelta(seconds=app.config['PERMANENT_SESSION_LIFETIME']),
                 httponly=self.get_cookie_httponly(app),
                 domain=self.get_cookie_domain(app),
@@ -462,28 +472,29 @@ class MailuSessionExtension:
     def init_app(self, app):
         """ Replace session management of application. """
 
+        redis_session = False
+
         if app.config.get('MEMORY_SESSIONS'):
             # in-memory session store for use in development
             app.session_store = DictStore()
 
         else:
             # redis-based session store for use in production
+            redis_session = True
             app.session_store = RedisStore(
                 redis.StrictRedis().from_url(app.config['SESSION_STORAGE_URL'])
             )
 
-            # clean expired sessions oonce on first use in case lifetime was changed
-            def cleaner():
+        app.session_config = MailuSessionConfig(app)
+        app.session_interface = MailuSessionInterface()
+        if redis_session:
+            # clean expired sessions once on first use in case lifetime was changed
+            with app.app_context():
                 with cleaned.get_lock():
                     if not cleaned.value:
                         cleaned.value = True
                         app.logger.info('cleaning session store')
                         MailuSessionExtension.cleanup_sessions(app)
-
-            app.before_first_request(cleaner)
-
-        app.session_config = MailuSessionConfig(app)
-        app.session_interface = MailuSessionInterface()
 
 cleaned = Value('i', False)
 session = MailuSessionExtension()
@@ -507,3 +518,33 @@ def gen_temp_token(email, session):
             app.config['PERMANENT_SESSION_LIFETIME'],
     )
     return token
+
+def isBadOrPwned(form):
+    try:
+        if len(form.pw.data) < 8:
+            return "This password is too short."
+        breaches = int(form.pwned.data)
+    except ValueError:
+        breaches = -1
+    if breaches > 0:
+        return f"This password appears in {breaches} data breaches! It is not unique; please change it."
+    return None
+
+def formatCSVField(field):
+    if not field.data:
+        field.data = ''
+        return
+    if isinstance(field.data,str):
+        data = field.data.replace(" ","").split(",")
+    else:
+        data = field.data
+    field.data = ", ".join(data)
+
+# All tokens are 32 characters hex lowercase
+def is_app_token(candidate):
+    if len(candidate) == 32 and all(c in string.hexdigits[:-6] for c in candidate):
+        return True
+    return False
+
+def truncated_pw_hash(pw):
+    return hmac.new(app.truncated_pw_key, bytearray(pw, 'utf-8'), 'sha256').hexdigest()[:6]

@@ -1,27 +1,16 @@
-{% if flavor == "stack" %}
-{% call macros.panel("danger", "Docker stack / swarm is experimental") %}
-Setup is capable of generating a somewhat decent docker-compose.yml,
-for the docker stack flavor. However its usage is for advanced users only and is experimental.
-Expect many challenges such as shared mail storage and fail-over scenarios! Some user experiences
-have been <a href="https://github.com/Mailu/Mailu/blob/master/docs/swarm/master/README.md">shared on GitHub.</a>
-For this reason also think very hard about using a replica count higher than 1. This cannot be used with the default config.
-Manual post-configuration is required for using a replica count higher than 1.
-{% endcall %}
-{% endif %}
-
-{% call macros.panel("info", "Step 2 - Initial configuration") %}
+{% call macros.panel("info", "Step 1 - Initial configuration") %}
 <p>Before starting, some variables must be set.</p>
 
 <div class="form-group">
   <label>Mailu storage path: </label>
 <!--   Validates path -->
-  <input class="form-control" type="text" name="root" value="/mailu" required pattern="^/[-_A-Za-z0-9]+(/[-_A-Za-z0-9]*)*">
+  <input class="form-control" type="text" name="root" value="/mailu" required pattern="^\/[\-_A-Za-z0-9\.]+(\/[\-_A-Za-z0-9\.]*)*">
 </div>
 
 <p>In the following sections we need to set the postmaster address. This is a combination of the <i>postmaster</i> local part and the <i>main mail domain</i>.
 The <i>main mail domain</i> is also used as </i>"server display name"</i>. This is the way the SMTP server identifies itself when connecting to others.
 The Postmaster will get an e-mail address &lt;postmaster&gt;@&lt;main_domain&gt;. This address will receive the DMARC "rua" and "ruf" reports.
-Or in plain english: if receivers start to classify your mail as spam, this postmaster will be informed.</p>
+Or in plain English: if receivers start to classify your mail as spam, this postmaster will be informed.</p>
 
 <div class="form-group">
   <label>
@@ -48,10 +37,9 @@ Or in plain english: if receivers start to classify your mail as spam, this post
 </div>
 
 <div class="form-group">
-  <label>Authentication rate limit per IP for failed login attempts or non-existing accounts</label>
+  <label>Authentication rate limit per IP for failed login attempts on unique non-existing accounts (password spraying counter-measure)</label>
   <!--   Validates number input only -->
-  <p><input class="form-control" style="width: 9%; display: inline;" type="number" name="auth_ratelimit_ip"
-  		value="60" required > / hour
+  <p><input class="form-control" style="width: 9%; display: inline;" type="number" name="auth_ratelimit_ip" value="5" required > / hour
   </p>
 </div>
 
@@ -59,7 +47,7 @@ Or in plain english: if receivers start to classify your mail as spam, this post
   <label>Authentication rate limit per user</label>
   <!--   Validates number input only -->
   <p><input class="form-control" style="width: 9%; display: inline;" type="number" name="auth_ratelimit_user"
-  		value="100" required > / day
+  		value="50" required > / day
   </p>
 </div>
 
@@ -72,8 +60,8 @@ Or in plain english: if receivers start to classify your mail as spam, this post
 
 <div class="form-check form-check-inline">
   <label class="form-check-label">
-    <input class="form-check-input" type="checkbox" name="disable_statistics" value="True">
-    Opt-out of statistics
+    <input class="form-check-input" type="checkbox" name="statistics_enabled"  value="True">
+    Opt-in for anonymized statistics
   </label>
 </div>
 
@@ -93,13 +81,21 @@ Or in plain english: if receivers start to classify your mail as spam, this post
 manage your email domains, users, etc.</p>
 
 <div class="form-group">
-    <input type="checkbox" name="admin_enabled" value="true" id="admin">
-  	<label>Enable the admin UI (and path to the admin UI)</label>
-    <input class="form-control" type="text" name="admin_path" id="admin_path" style="display: none">
+    <input type="checkbox" name="admin_enabled" value="true" id="admin" checked>
+  	<label>Enable the admin UI</label>
 </div>
 
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<p>The API interface is a RESTful API for changing the Mailu configuration.
+  Anything that can be configured via the Mailu web administration interface,
+  can also be configured via the RESTful API. For enabling the API, an API token must be configured.
+  It is not possible to use the API without an API token.</p>
 
-<script type="text/javascript" src="{{ url_for('static', filename='render.js') }}"></script>
+  <div class="form-group">
+      <input type="checkbox" name="api_enabled" value="true" id="api_enabled" >
+      <label>Enable the API</label>
+      <br>
+      <label name="api_token_label" id="api_token_label">API token</label>
+      <input class="form-control" type="text" name="api_token" id="api_token" style="display: none" value="{{ secret(32) }}">
+  </div>
 
 {% endcall %}

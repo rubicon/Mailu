@@ -1,12 +1,19 @@
 from wtforms import validators, fields, widgets
+from wtforms.validators import ValidationError
 from wtforms_components import fields as fields_
 from flask_babel import lazy_gettext as _
 
 import flask_login
 import flask_wtf
 import re
+import string
+import ipaddress
 
-LOCALPART_REGEX = "^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*$"
+LOCALPART_REGEX = r'^[a-zA-Z0-9!#$%&\'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&\'*+/=?^_`{|}~-]+)*$'
+
+def checkStrippable(form, field):
+    if field.data != field.data.strip(string.whitespace):
+        raise ValidationError(_('Passwords should not start or end with whitespaces'))
 
 class DestinationField(fields.SelectMultipleField):
     """ Allow for multiple emails selection from current user choices and
@@ -37,7 +44,17 @@ class MultipleEmailAddressesVerify(object):
         self.message = message
 
     def __call__(self, form, field):
-        pattern = re.compile(r'^([_a-z0-9\-]+)(\.[_a-z0-9\-]+)*@([a-z0-9\-]{2,}\.)*([a-z]{2,})(,([_a-z0-9\-]+)(\.[_a-z0-9\-]+)*@([a-z0-9\-]{2,}\.)*([a-z]{2,}))*$')
+        pattern = re.compile(r'^([_a-z0-9\-\+]+)(\.[_a-z0-9\-\+]+)*@([a-z0-9\-]{1,}\.)*([a-z]{1,})(,([_a-z0-9\-\+]+)(\.[_a-z0-9\-\+]+)*@([a-z0-9\-]{1,}\.)*([a-z]{2,}))*$', re.IGNORECASE)
+        if not pattern.match(field.data.replace(" ", "")):
+            raise validators.ValidationError(self.message)
+
+class MultipleFoldersVerify(object):
+    """ Ensure that we have CSV formated data """
+    def __init__(self,message=_('Invalid list of folders.')):
+        self.message = message
+
+    def __call__(self, form, field):
+        pattern = re.compile(r'^[^,]+(,[^,]+)*$')
         if not pattern.match(field.data.replace(" ", "")):
             raise validators.ValidationError(self.message)
 
@@ -57,8 +74,9 @@ class DomainForm(flask_wtf.FlaskForm):
 class DomainSignupForm(flask_wtf.FlaskForm):
     name = fields.StringField(_('Domain name'), [validators.DataRequired()])
     localpart = fields.StringField(_('Initial admin'), [validators.DataRequired()])
-    pw = fields.PasswordField(_('Admin password'), [validators.DataRequired()])
+    pw = fields.PasswordField(_('Admin password'), [validators.DataRequired(), checkStrippable])
     pw2 = fields.PasswordField(_('Confirm password'), [validators.EqualTo('pw')])
+    pwned = fields.HiddenField(label='', default=-1)
     captcha = flask_wtf.RecaptchaField()
     submit = fields.SubmitField(_('Create'))
 
@@ -78,20 +96,24 @@ class RelayForm(flask_wtf.FlaskForm):
 class UserForm(flask_wtf.FlaskForm):
     localpart = fields.StringField(_('E-mail'), [validators.DataRequired(), validators.Regexp(LOCALPART_REGEX)])
     pw = fields.PasswordField(_('Password'))
-    pw2 = fields.PasswordField(_('Confirm password'), [validators.EqualTo('pw')])
+    pw2 = fields.PasswordField(_('Confirm password'), [checkStrippable, validators.EqualTo('pw')])
+    pwned = fields.HiddenField(label='', default=-1)
     quota_bytes = fields_.IntegerSliderField(_('Quota'), default=10**9)
     enable_imap = fields.BooleanField(_('Allow IMAP access'), default=True)
     enable_pop = fields.BooleanField(_('Allow POP3 access'), default=True)
+    allow_spoofing = fields.BooleanField(_('Allow the user to spoof the sender (send email as anyone)'), default=False)
     displayed_name = fields.StringField(_('Displayed name'))
     comment = fields.StringField(_('Comment'))
     enabled = fields.BooleanField(_('Enabled'), default=True)
+    change_pw_next_login = fields.BooleanField(_('Force password change at next login'), default=True)
     submit = fields.SubmitField(_('Save'))
 
 
 class UserSignupForm(flask_wtf.FlaskForm):
     localpart = fields.StringField(_('Email address'), [validators.DataRequired(), validators.Regexp(LOCALPART_REGEX)])
-    pw = fields.PasswordField(_('Password'), [validators.DataRequired()])
+    pw = fields.PasswordField(_('Password'), [validators.DataRequired(), checkStrippable])
     pw2 = fields.PasswordField(_('Confirm password'), [validators.EqualTo('pw')])
+    pwned = fields.HiddenField(label='', default=-1)
     submit = fields.SubmitField(_('Sign up'))
 
 class UserSignupFormCaptcha(UserSignupForm):
@@ -111,16 +133,23 @@ class UserSettingsForm(flask_wtf.FlaskForm):
 class UserPasswordForm(flask_wtf.FlaskForm):
     pw = fields.PasswordField(_('Password'), [validators.DataRequired()])
     pw2 = fields.PasswordField(_('Password check'), [validators.DataRequired()])
+    pwned = fields.HiddenField(label='', default=-1)
     submit = fields.SubmitField(_('Update password'))
 
+class UserPasswordChangeForm(flask_wtf.FlaskForm):
+    current_pw = fields.PasswordField(_('Current password'), [validators.DataRequired()])
+    pw = fields.PasswordField(_('Password'), [validators.DataRequired(), checkStrippable])
+    pw2 = fields.PasswordField(_('Password check'), [validators.DataRequired()])
+    pwned = fields.HiddenField(label='', default=-1)
+    submit = fields.SubmitField(_('Update password'))
 
 class UserReplyForm(flask_wtf.FlaskForm):
     reply_enabled = fields.BooleanField(_('Enable automatic reply'))
     reply_subject = fields.StringField(_('Reply subject'))
     reply_body = fields.StringField(_('Reply body'),
         widget=widgets.TextArea())
-    reply_startdate = fields.html5.DateField(_('Start of vacation'))
-    reply_enddate = fields.html5.DateField(_('End of vacation'))
+    reply_startdate = fields.DateField(_('Start of vacation'))
+    reply_enddate = fields.DateField(_('End of vacation'))
     submit = fields.SubmitField(_('Update'))
 
 
@@ -131,10 +160,18 @@ class TokenForm(flask_wtf.FlaskForm):
     raw_password = fields.HiddenField([validators.DataRequired()])
     comment = fields.StringField(_('Comment'))
     ip = fields.StringField(
-        _('Authorized IP'), [validators.Optional(), validators.IPAddress(ipv6=True)]
+        _('Authorized IP'), [validators.Optional()]
     )
     submit = fields.SubmitField(_('Save'))
 
+    def validate_ip(form, field):
+        if not field.data:
+            return True
+        try:
+            for candidate in field.data.replace(' ','').split(','):
+                ipaddress.ip_network(candidate, False)
+        except:
+            raise validators.ValidationError('Not a valid list of CIDRs')
 
 class AliasForm(flask_wtf.FlaskForm):
     localpart = fields.StringField(_('Alias'), [validators.DataRequired(), validators.Regexp(LOCALPART_REGEX)])
@@ -160,11 +197,13 @@ class FetchForm(flask_wtf.FlaskForm):
         ('imap', 'IMAP'), ('pop3', 'POP3')
     ])
     host = fields.StringField(_('Hostname or IP'), [validators.DataRequired()])
-    port = fields.IntegerField(_('TCP port'), [validators.DataRequired(), validators.NumberRange(min=0, max=65535)])
-    tls = fields.BooleanField(_('Enable TLS'))
+    port = fields.IntegerField(_('TCP port'), [validators.DataRequired(), validators.NumberRange(min=0, max=65535)], default=993)
+    tls = fields.BooleanField(_('Enable TLS'), default=True)
     username = fields.StringField(_('Username'), [validators.DataRequired()])
     password = fields.PasswordField(_('Password'))
     keep = fields.BooleanField(_('Keep emails on the server'))
+    scan = fields.BooleanField(_('Rescan emails locally'))
+    folders = fields.StringField(_('Folders to fetch on the server'), [validators.Optional(), MultipleFoldersVerify()], default='INBOX,Junk')
     submit = fields.SubmitField(_('Submit'))
 
 

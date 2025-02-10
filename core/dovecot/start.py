@@ -1,19 +1,19 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import os
 import glob
 import multiprocessing
-import logging as log
-import sys
 
 from podop import run_server
 from socrate import system, conf
 
-log.basicConfig(stream=sys.stderr, level=os.environ.get("LOG_LEVEL", "WARNING"))
+system.set_env(log_filters=[
+    rb'Error\: SSL context initialization failed, disabling SSL\: Can\'t load SSL certificate \(ssl_cert setting\)\: The certificate is empty$'
+])
 
 def start_podop():
-    os.setuid(8)
-    url = "http://" + os.environ["ADMIN_ADDRESS"] + "/internal/dovecot/§"
+    system.drop_privs_to('mail')
+    url = "http://" + os.environ["ADMIN_ADDRESS"] + ":8080/internal/dovecot/§"
     run_server(0, "dovecot", "/tmp/podop.socket", [
 		("quota", "url", url ),
 		("auth", "url", url),
@@ -21,10 +21,6 @@ def start_podop():
     ])
 
 # Actual startup script
-os.environ["FRONT_ADDRESS"] = system.get_host_address_from_environment("FRONT", "front")
-os.environ["ADMIN_ADDRESS"] = system.get_host_address_from_environment("ADMIN", "admin")
-os.environ["ANTISPAM_WEBUI_ADDRESS"] = system.get_host_address_from_environment("ANTISPAM_WEBUI", "antispam:11334")
-
 for dovecot_file in glob.glob("/conf/*.conf"):
     conf.jinja(dovecot_file, os.environ, os.path.join("/etc/dovecot", os.path.basename(dovecot_file)))
 
@@ -35,7 +31,9 @@ for script_file in glob.glob("/conf/*.script"):
     os.chmod(out_file, 0o555)
 
 # Run Podop, then postfix
-multiprocessing.Process(target=start_podop).start()
 os.system("chown mail:mail /mail")
 os.system("chown -R mail:mail /var/lib/dovecot /conf")
-os.execv("/usr/sbin/dovecot", ["dovecot", "-c", "/etc/dovecot/dovecot.conf", "-F"])
+
+multiprocessing.Process(target=start_podop).start()
+cmd = ['/usr/sbin/dovecot', '-c', '/etc/dovecot/dovecot.conf', '-F']
+system.run_process_and_forward_output(cmd)
