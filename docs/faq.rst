@@ -10,8 +10,7 @@ Where to ask questions?
 ```````````````````````
 
 First, please read this FAQ to check if your question is listed here.
-Simple questions are best asked in our `Matrix`_ room.
-For more complex questions, you can always open a `new discussion`_ on GitHub.
+If it is not, you can open a `new discussion`_ on GitHub.
 
 
 My installation is broken!
@@ -86,7 +85,6 @@ Please click the |sponsor| button on top of our GitHub Page for current possibil
   :target: `GitHub`_
 
 
-.. _`Matrix`: https://matrix.to/#/#mailu:tedomum.net
 .. _`open issues`: https://github.com/Mailu/Mailu/issues
 .. _`new issue`: https://github.com/Mailu/Mailu/issues/new
 .. _`new discussion`: https://github.com/Mailu/Mailu/discussions/categories/user-support

@@ -195,10 +195,6 @@ domain name would be required. This can be a simple free DynDNS account. Do not 
 server, as there are cases where data corruption occurs and you need to delete the ``/mailu``
 directory structure.
 
-If you do no posses the resources, but want to become an involved tester/reviewer, please contact
-us on `Matrix`_.
-
-.. _`Matrix`: https://matrix.to/#/#mailu:tedomum.net
 .. _testing:
 
 Test images

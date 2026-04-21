@@ -5,8 +5,8 @@ The demo server is for demonstration and test purposes only. Please be
 respectful and keep the demo server functional for others to be able to try it
 out.
 
-If you find the server is unusable, you can ask for someone to reset it manually on our Matrix
-chat channel. Please do not open tickets every time the server is down.
+The server is reset automatically several times a day (see the schedule below), so if you find
+it unusable, please wait for the next reset rather than opening a ticket.
 Please do not open tickets if the server is quite slow: it *is* slow because the
 services have only limited resources available.
 
