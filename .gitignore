@@ -17,3 +17,7 @@ pip-selfcheck.json
 /.idea
 /.vscode
 qemu-arm-static
+.todos/
+.mcp.json
+.memory/
+.claude_code_search/
