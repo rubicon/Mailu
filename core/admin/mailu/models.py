@@ -506,6 +506,14 @@ class Email(object):
             domain_name = alternative.domain_name
         return (localpart, domain_name)
 
+    @staticmethod
+    def _append_detail(address, detail):
+        """ insert a recipient-delimiter detail into an address localpart """
+        if not detail or '@' not in address:
+            return address
+        localpart, domain_name = address.rsplit('@', 1)
+        return f'{localpart}{detail}@{domain_name}'
+
     @classmethod
     def resolve_destination(cls, localpart, domain_name, ignore_forward_keep=False):
         """ return destination for email address localpart@domain_name """
@@ -543,7 +551,13 @@ class Email(object):
                 return pure_alias.destination
 
         if stripped_alias := Alias.resolve(localpart_stripped, domain_name):
-            return stripped_alias.destination
+            if stripped_alias.wildcard:
+                return stripped_alias.destination
+            # Re-attach the recipient delimiter detail (e.g. '+tag') that was
+            # stripped for the lookup, so it is not lost for the recipient. This
+            # mirrors postfix' propagate_unmatched_extensions for explicit aliases.
+            detail = localpart[len(localpart_stripped):]
+            return [cls._append_detail(dst, detail) for dst in stripped_alias.destination]
 
         if pure_alias:
             return pure_alias.destination
