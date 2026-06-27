@@ -1,8 +1,27 @@
+from urllib.parse import quote
+
 from mailu import models
 
 
 class TestAnonmailPostfixIntegration:
     """Tests for Postfix integration with anonmail aliases"""
+
+    def test_postfix_double_at_is_404_not_500(self, app, client):
+        """ Regression for #3252.
+
+        An address with more than one ``@`` (or a quoted local part) is not a
+        valid Mailu address. The internal postfix lookup endpoints must answer
+        such a key with 404, not raise an unhandled 500: a 500 makes Postfix
+        treat the lookup as a temporary failure and retry, which trips the
+        sender's rate limit.
+        """
+        with app.app_context():
+            for bad in ('a@b@example.com', '"a@b"@example.com'):
+                key = quote(bad, safe='')
+                for endpoint in ('alias', 'recipient/map', 'sender/login', 'sender/map'):
+                    rv = client.get(f'/internal/postfix/{endpoint}/{key}')
+                    assert rv.status_code == 404, \
+                        f'/internal/postfix/{endpoint}/ for {bad!r} -> {rv.status_code}'
 
     def test_postfix_sees_generated_alias(self, app, client, create_user_and_token, grant_domain_access):
         with app.app_context():

@@ -1,0 +1,1 @@
+Return 404 instead of an internal error from the Postfix lookup endpoints when an address has more than one "@" or a quoted local part, so Postfix no longer temporarily defers and rate-limits the sender
