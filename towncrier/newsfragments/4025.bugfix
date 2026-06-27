@@ -1,0 +1,1 @@
+Fix a 500 error when saving a fetched account with an empty list of folders
