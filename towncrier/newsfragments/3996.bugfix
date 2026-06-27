@@ -1,0 +1,1 @@
+Count users and aliases on the domain list page with a single grouped query per table instead of loading every domain's full user/alias collection, which made the page hang on installs with many users
