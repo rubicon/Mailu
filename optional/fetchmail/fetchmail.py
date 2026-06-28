@@ -93,12 +93,6 @@ def run(debug):
                 # No mail is not an error
                 if not error_message.startswith("fetchmail: No mail"):
                     print(error_message)
-                user_info = "for %s at %s" % (fetch["user_email"], fetch["host"])
-                # Number of messages seen is not a error as well
-                if ("messages" in error_message and
-                        "(seen " in error_message and
-                        user_info in error_message):
-                    print(error_message)
             finally:
                 requests.post("http://{}:8080/internal/fetch/{}".format(os.environ['ADMIN_ADDRESS'],fetch['id']),
                     json=error_message.split('\n')[0]

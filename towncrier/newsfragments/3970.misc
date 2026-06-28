@@ -1,0 +1,1 @@
+fetchmail: remove duplicate logging of fetch errors (the "messages seen" branch re-printed output the preceding check already logged)
