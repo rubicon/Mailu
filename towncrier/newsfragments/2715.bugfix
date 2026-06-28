@@ -1,0 +1,1 @@
+Fix "flask mailu config-import" raising a foreign-key constraint violation on FK-enforcing databases (e.g. PostgreSQL) by clearing the existing configuration through the ORM so deletes are ordered and cascade to dependent rows.
