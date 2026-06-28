@@ -39,7 +39,7 @@ staleLabel: status/response_needed
 markComment: |
   Issues not for bugs, enhancement requests or discussion go stale after 21 days of inactivity. This issue will be automatically closed after 14 days.
   For all metrics refer to the [stale.yml file](https://github.com/Mailu/Mailu/blob/master/.github/stale.yml).
-  Github issues are not meant for user support. For **user-support questions**, reach out  on the [matrix support channel](https://matrix.to/#/#mailu:tedomum.net).
+  Github issues are not meant for user support. For **user-support questions**, please use [GitHub Discussions](https://github.com/Mailu/Mailu/discussions/categories/user-support).
 
   Mark the issue as fresh by simply adding a comment to the issue.
   If this issue is safe to close, please do so now.

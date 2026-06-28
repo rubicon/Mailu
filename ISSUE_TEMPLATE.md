@@ -1,9 +1,9 @@
 <!--
 
 Thank you for opening an issue with Mailu. Please understand that issues are meant for bugs only. The bug report should follow the issue template and provide clear replication steps and logs.
-For **user-support questions**, reach out to us  on [matrix](https://matrix.to/#/#mailu:tedomum.net) or [disussions](https://github.com/Mailu/Mailu/discussions/categories/user-support).
+For **user-support questions**, reach out to us on [discussions](https://github.com/Mailu/Mailu/discussions/categories/user-support).
 
-For anything but bug reports use the [matrix channel](https://matrix.to/#/#mailu:tedomum.net) or [disussions](https://github.com/Mailu/Mailu/discussions).
+For anything but bug reports use [discussions](https://github.com/Mailu/Mailu/discussions).
 So use discussions for topics such as
 
 * Checking announcements.

@@ -1,0 +1,1 @@
+Preserve the recipient-delimiter detail (e.g. +tag) when delivering to an explicit alias, instead of dropping it (fixes lmtp_save_to_detail_mailbox for aliases)
