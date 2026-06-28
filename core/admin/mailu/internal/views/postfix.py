@@ -8,6 +8,16 @@ import re
 import sqlalchemy.exc
 import srslib
 
+def _unsupported_address(address):
+    """ Return True for a lookup key Mailu cannot resolve: an address with
+    more than one ``@`` or a quoted local part. Binding such a key in
+    ``resolve_destination`` lets ``IdnaEmail.process_bind_param`` raise (the
+    local part still contains an ``@``), which SQLAlchemy surfaces as a
+    ``StatementError`` and 500s the endpoint. Postfix then treats the lookup as
+    a temporary failure and retries — tripping the sender rate limit (#3252).
+    The resolve-path endpoints must answer 404 instead. """
+    return address.count('@') > 1 or address.startswith('"')
+
 @internal.route("/postfix/dane/<domain_name>")
 def postfix_dane_map(domain_name):
     return flask.jsonify('dane-only') if utils.has_dane_record(domain_name) else flask.abort(404)
@@ -30,6 +40,8 @@ def postfix_mailbox_map(email):
 
 @internal.route("/postfix/alias/<path:alias>")
 def postfix_alias_map(alias):
+    if _unsupported_address(alias):
+        return flask.abort(404)
     localpart, domain_name = models.Email.resolve_domain(alias)
     if localpart is None:
         return flask.jsonify(domain_name)
@@ -125,8 +137,6 @@ def postfix_sender_map(sender):
 
     This is for bounces to come back the reverse path properly.
     """
-    if sender.count('@') > 1 or sender.startswith('"'):
-        return flask.abort(404)
     srs = srslib.SRS(flask.current_app.srs_key)
     domain = flask.current_app.config["DOMAIN"]
     try:
@@ -140,6 +150,8 @@ def postfix_sender_map(sender):
 
 @internal.route("/postfix/sender/login/<path:sender>")
 def postfix_sender_login(sender):
+    if _unsupported_address(sender):
+        return flask.abort(404)
     wildcard_senders = [s for s in flask.current_app.config.get('WILDCARD_SENDERS', '').lower().replace(' ', '').split(',') if s]
     localpart, domain_name = models.Email.resolve_domain(sender)
     if localpart is None:

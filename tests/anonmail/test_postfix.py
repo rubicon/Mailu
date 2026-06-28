@@ -1,8 +1,42 @@
+from urllib.parse import quote
+
 from mailu import models
 
 
 class TestAnonmailPostfixIntegration:
     """Tests for Postfix integration with anonmail aliases"""
+
+    def test_postfix_double_at_does_not_500(self, app, client):
+        """ Regression for #3252.
+
+        A lookup key with more than one ``@`` (or a quoted local part) is not a
+        valid Mailu address. The internal postfix endpoints must never answer it
+        with an unhandled 500: a 500 makes Postfix treat the lookup as a
+        temporary failure and retry, which trips the sender's rate limit.
+
+        The two resolve-path endpoints (``alias``, ``sender/login``) answer 404
+        via ``_unsupported_address`` — binding such a key in
+        ``resolve_destination`` would otherwise raise in ``IdnaEmail``. The two
+        SRS endpoints need no guard once srslib >= 0.1.5 handles the extra
+        ``@``: ``recipient/map`` is not an SRS address so it answers 404, and
+        ``sender/map`` SRS-forwards an external sender (200) or answers 404 for
+        a local domain — never 500.
+        """
+        with app.app_context():
+            models.db.session.add(models.Domain(name='example.com'))
+            models.db.session.commit()
+            for bad in ('a@b@example.com', '"a@b"@example.com'):
+                key = quote(bad, safe='')
+                for endpoint in ('alias', 'recipient/map', 'sender/login'):
+                    rv = client.get(f'/internal/postfix/{endpoint}/{key}')
+                    assert rv.status_code == 404, \
+                        f'/internal/postfix/{endpoint}/ for {bad!r} -> {rv.status_code}'
+            # sender/map: 404 for a local domain, 200 (SRS-forwarded) for an
+            # external one — the point is that neither path 500s.
+            local = quote('a@b@example.com', safe='')
+            external = quote('a@b@external.invalid', safe='')
+            assert client.get(f'/internal/postfix/sender/map/{local}').status_code == 404
+            assert client.get(f'/internal/postfix/sender/map/{external}').status_code == 200
 
     def test_postfix_sees_generated_alias(self, app, client, create_user_and_token, grant_domain_access):
         with app.app_context():
