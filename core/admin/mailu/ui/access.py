@@ -46,6 +46,24 @@ def global_admin(args, kwargs):
     return flask_login.current_user.global_admin
 
 
+def _can_manage_user(actor, target):
+    """ Whether ``actor`` may manage the account of ``target`` (a User).
+
+    Global admins may manage anyone, and any user may manage themselves.
+    Otherwise a (domain) manager may only manage a target that does not
+    outrank them: the target must not be a global admin, and every domain the
+    target manages must also be managed by the actor. Without this, a manager
+    of a domain could reset the password of -- or mint an API token for -- a
+    global admin (or a manager of another domain) who merely owns a mailbox in
+    the managed domain, taking over that privileged account (#2685).
+    """
+    if actor.global_admin or target.email == actor.email:
+        return True
+    if target.global_admin:
+        return False
+    return set(target.get_managed_domains()) <= set(actor.get_managed_domains())
+
+
 @permissions_wrapper
 def domain_admin(args, kwargs, model, key):
     """ The view is only available to specific domain admins.
@@ -55,11 +73,19 @@ def domain_admin(args, kwargs, model, key):
     based on the query parameter named after the key. The model may
     either be Domain or an Email subclass (or any class with a
     ``domain`` attribute which stores a related Domain instance).
+
+    When the resource is a User, the manager must additionally outrank the
+    target (see ``_can_manage_user``) so a domain manager cannot take over a
+    higher-privileged account that owns a mailbox in the managed domain (#2685).
     """
     obj = model.query.get(kwargs[key])
     if obj:
         domain = obj if type(obj) is models.Domain else obj.domain
-        return domain in flask_login.current_user.get_managed_domains()
+        if domain not in flask_login.current_user.get_managed_domains():
+            return False
+        if isinstance(obj, models.User):
+            return _can_manage_user(flask_login.current_user, obj)
+        return True
 
 
 @permissions_wrapper
@@ -74,15 +100,21 @@ def owner(args, kwargs, model, key):
     If the query parameter is empty and the model is User, then
     the resource being accessed is supposed to be the current
     logged in user and access is obviously authorized.
+
+    A manager accessing someone else's resource must outrank the target user
+    (see ``_can_manage_user``), so a domain manager cannot e.g. mint an API
+    token for a global admin who owns a mailbox in the managed domain (#2685).
     """
     if kwargs[key] is None and model == models.User:
         return True
     obj = model.query.get(kwargs[key])
     if obj:
         user = obj if type(obj) is models.User else obj.user
+        if user.email == flask_login.current_user.email:
+            return True
         return (
-            user.email == flask_login.current_user.email
-            or user.domain in flask_login.current_user.get_managed_domains()
+            user.domain in flask_login.current_user.get_managed_domains()
+            and _can_manage_user(flask_login.current_user, user)
         )
 
 
