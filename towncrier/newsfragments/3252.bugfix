@@ -1,1 +1,1 @@
-Return 404 instead of an internal error from the Postfix lookup endpoints when an address has more than one "@" or a quoted local part, so Postfix no longer temporarily defers and rate-limits the sender
+Stop the internal Postfix lookup endpoints from returning an internal error for an address with more than one "@" or a quoted local part, which made Postfix defer and rate-limit the sender: upgrade srslib to 0.1.5 for the SRS endpoints and reject such keys on the resolve-path endpoints
