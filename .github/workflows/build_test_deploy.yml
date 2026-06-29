@@ -462,6 +462,42 @@ jobs:
           MAILU_VERSION: ${{ env.MAILU_VERSION }}-build
           PINNED_MAILU_VERSION: ${{ env.PINNED_MAILU_VERSION }}-build
 
+# This job runs the headless admin unit tests (tests/anonmail) inside the freshly
+# built admin image, so they exercise the exact python interpreter and pinned
+# dependencies that ship in the image instead of a separately installed set. They
+# cover the Flask-Admin models/views/API layer against an in-memory SQLite
+# database, which the docker-compose tests above do not.
+  unit-tests:
+    name: admin unit tests
+    if: contains(inputs.architecture, 'linux/amd64')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    needs:
+      - build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Helper to convert docker org to lowercase
+        id: string
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{ github.repository_owner }}
+      - name: Run tests/anonmail inside the admin image
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/tests:/app/tests:ro \
+            -w /app \
+            -e PYTHONDONTWRITEBYTECODE=1 \
+            ghcr.io/${{ steps.string.outputs.lowercase }}/admin:${{ inputs.mailu_version }}-build \
+            sh -c "pip install --no-cache-dir pytest && python -m pytest -v -p no:cacheprovider tests/anonmail"
+
   deploy:
     name: Deploy images
     # Deploying is not required for staging
@@ -471,6 +507,7 @@ jobs:
       - build
       - build-arm
       - tests
+      - unit-tests
     strategy:
       fail-fast: false
       matrix:
