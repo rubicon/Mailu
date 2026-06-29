@@ -1128,9 +1128,19 @@ class MailuConfig:
 
     def clear(self, models=None):
         """ remove complete configuration """
+        # Delete via the ORM (load + session.delete) instead of a bulk
+        # query(model).delete(). Bulk deletes neither honour FK ordering nor
+        # trigger ORM cascades / many-to-many (manager) secondary cleanup, so on
+        # a FK-enforcing backend (e.g. PostgreSQL) "DELETE FROM domain" fails
+        # while users/aliases/managers still reference it (#2715). Loading the
+        # rows lets the unit-of-work emit deletes in dependency order and
+        # cascade to dependent rows. The explicit flush keeps the tables
+        # physically empty before the new configuration is loaded.
         for model in self._models:
             if models is None or model in models:
-                db.session.query(model).delete()
+                for item in model.query.all():
+                    db.session.delete(item)
+        db.session.flush()
 
     def check(self):
         """ check for duplicate domain names """
