@@ -11,7 +11,19 @@ import wtforms_components
 @ui.route('/domain', methods=['GET'])
 @access.authenticated
 def domain_list():
-    return flask.render_template('domain/list.html')
+    # Count users/aliases per domain with one grouped aggregate each, instead of
+    # letting the template materialize every domain's full collection via
+    # ``domain.users | count`` — which hangs the page on large installs (#3996).
+    user_counts = dict(
+        models.db.session.query(models.User.domain_name, models.db.func.count(models.User.email))
+        .group_by(models.User.domain_name)
+    )
+    alias_counts = dict(
+        models.db.session.query(models.Alias.domain_name, models.db.func.count(models.Alias.email))
+        .group_by(models.Alias.domain_name)
+    )
+    return flask.render_template('domain/list.html',
+        user_counts=user_counts, alias_counts=alias_counts)
 
 
 @ui.route('/domain/create', methods=['GET', 'POST'])

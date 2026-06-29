@@ -1,0 +1,1 @@
+Prevent a domain manager from resetting the password of, editing, or creating API tokens for a user that outranks them (a global admin or a manager of another domain) who merely owns a mailbox in the managed domain
